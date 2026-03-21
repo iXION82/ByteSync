@@ -116,6 +116,9 @@ export default function SignInForm() {
             </div>
           </div>
 
+          {/* Clerk CAPTCHA widget mounts here for bot protection */}
+          <div id="clerk-captcha" />
+
           <button
             type="submit"
             disabled={loading || fetchStatus === "fetching"}

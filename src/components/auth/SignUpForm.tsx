@@ -244,6 +244,9 @@ export default function SignUpForm() {
             <p className="auth-hint">Must be at least 8 characters</p>
           </div>
 
+          {/* Clerk CAPTCHA widget mounts here for bot protection */}
+          <div id="clerk-captcha" />
+
           <button
             type="submit"
             disabled={loading || fetchStatus === "fetching"}
