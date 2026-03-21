@@ -28,7 +28,7 @@ async function getUsersCollection() {
   return collection;
 }
 
-// ─── CRUD Functions ─────────────────────────────────────────────
+// ─── CRUD Functions ────────────────────────────────────────────
 
 /**
  * Create a new user in MongoDB (typically called from Clerk webhook)
