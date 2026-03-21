@@ -39,6 +39,23 @@ export default function SignUpForm() {
         return;
       }
 
+      // Save user details to MongoDB right after Clerk user creation
+      try {
+        const res = await fetch("/api/users", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            clerkId: signUp.createdUserId || "unknown",
+            email,
+            name: name.trim(),
+          }),
+        });
+        const data = await res.json();
+        console.log("MongoDB save response:", res.status, data);
+      } catch (dbError) {
+        console.error("Failed to save user to MongoDB:", dbError);
+      }
+
       // Send email verification code using v7 API
       await signUp.verifications.sendEmailCode();
 
@@ -69,6 +86,24 @@ export default function SignUpForm() {
         setError(verifyError.message || "Invalid verification code");
         setLoading(false);
         return;
+      }
+
+      // Save user details to MongoDB immediately after verification
+      console.log("Sign-up status:", signUp.status, "userId:", signUp.createdUserId);
+      try {
+        const res = await fetch("/api/users", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            clerkId: signUp.createdUserId || "unknown",
+            email,
+            name: name.trim(),
+          }),
+        });
+        const data = await res.json();
+        console.log("MongoDB save response:", res.status, data);
+      } catch (dbError) {
+        console.error("Failed to save user to MongoDB:", dbError);
       }
 
       if (signUp.status === "complete") {

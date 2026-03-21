@@ -53,7 +53,7 @@ export default clientPromise;
  * Helper to get the database instance directly.
  * Uses the default database from the connection string, or pass a name.
  */
-export async function getDatabase(dbName?: string): Promise<Db> {
+export async function getDatabase(dbName: string = "ByteSync"): Promise<Db> {
   const client = await clientPromise;
   return client.db(dbName);
 }
