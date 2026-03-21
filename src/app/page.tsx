@@ -180,6 +180,7 @@ export default function Home() {
               ),
               title: "Real-Time Sync",
               desc: "Every keystroke synced instantly. See your teammates type in real-time with zero latency editing.",
+              colorClass: "feature-card--cyan",
             },
             {
               icon: (
@@ -191,6 +192,7 @@ export default function Home() {
               ),
               title: "Multi-Language",
               desc: "Syntax highlighting for 50+ languages. From Python to Rust, we've got your stack covered.",
+              colorClass: "feature-card--magenta",
             },
             {
               icon: (
@@ -200,10 +202,11 @@ export default function Home() {
               ),
               title: "Secure Rooms",
               desc: "Private rooms with access controls. Your code stays between you and your team.",
+              colorClass: "feature-card--amber",
             },
           ].map((feature, i) => (
             <motion.div
-              className="feature-card"
+              className={`feature-card ${feature.colorClass}`}
               key={feature.title}
               initial={{ opacity: 0, y: 25 }}
               whileInView={{ opacity: 1, y: 0 }}
