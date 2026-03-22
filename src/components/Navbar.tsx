@@ -28,23 +28,23 @@ export default function Navbar() {
   };
 
   return (
-    <nav className="navbar">
-      <div className="navbar-inner">
-        <Link href="/" className="navbar-brand">
-          <div className="navbar-logo">
+    <nav className="fixed inset-x-0 top-0 z-[100] bg-[var(--navbar-bg)] backdrop-blur-[20px] [-webkit-backdrop-filter:blur(20px)] border-b border-[var(--border-color)] transition-colors duration-300">
+      <div className="w-full max-w-[1200px] mx-auto px-6 h-16 flex items-center justify-between">
+        <Link href="/" className="flex items-center gap-[0.6rem] no-underline text-[var(--text-primary)] group">
+          <div className="w-9 h-9 rounded-lg border border-[var(--border-color)] bg-[var(--bg-card)] flex items-center justify-center text-[var(--accent)] transition-all duration-200 group-hover:border-[var(--accent)] group-hover:shadow-[0_0_12px_var(--accent-glow)]">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="16 18 22 12 16 6" />
               <polyline points="8 6 2 12 8 18" />
               <line x1="12" y1="2" x2="12" y2="22" opacity="0.4" />
             </svg>
           </div>
-          <span className="navbar-brand-text">ByteSync</span>
+          <span className="font-mono text-2xl font-normal tracking-[0.02em] text-[var(--accent)]">ByteSync</span>
         </Link>
 
-        <div className="navbar-actions">
+        <div className="flex items-center gap-3">
           {/* Theme Toggle */}
           <button
-            className="navbar-theme-toggle"
+            className="flex items-center justify-center w-9 h-9 rounded-lg border border-[var(--border-color)] bg-[var(--bg-card)] text-[var(--text-secondary)] cursor-pointer transition-all duration-200 hover:border-[var(--accent)] hover:text-[var(--accent)] hover:shadow-[0_0_12px_var(--accent-glow)]"
             onClick={toggleTheme}
             aria-label="Toggle theme"
             title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
@@ -70,30 +70,30 @@ export default function Navbar() {
 
           {isLoaded && isSignedIn ? (
             <>
-              <div className="navbar-user" onClick={() => setMenuOpen(!menuOpen)}>
+              <div className="relative cursor-pointer group" onClick={() => setMenuOpen(!menuOpen)}>
                 {user.imageUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={user.imageUrl}
                     alt={user.fullName || "Avatar"}
-                    className="navbar-avatar"
+                    className="w-9 h-9 rounded-full border-2 border-[var(--border-color)] transition-colors duration-200 object-cover group-hover:border-[var(--accent)]"
                   />
                 ) : (
-                  <div className="navbar-avatar-fallback">
+                  <div className="w-9 h-9 rounded-full [background:var(--btn-primary-bg)] flex items-center justify-center text-[var(--btn-primary-text)] font-bold text-[0.85rem] group-hover:border-[var(--accent)]">
                     {(user.firstName?.[0] || "U").toUpperCase()}
                   </div>
                 )}
                 {menuOpen && (
-                  <div className="navbar-dropdown">
-                    <div className="navbar-dropdown-header">
-                      <p className="navbar-dropdown-name">{user.fullName}</p>
-                      <p className="navbar-dropdown-email">
+                  <div className="absolute top-[calc(100%+8px)] right-0 bg-[var(--bg-secondary)] backdrop-blur-[20px] border border-[var(--border-color)] rounded-[var(--radius)] w-[220px] overflow-hidden animate-[fadeIn_0.15s_ease] shadow-[var(--shadow-lg)]">
+                    <div className="py-3 px-4 border-b border-[var(--border-color)]">
+                      <p className="text-[0.85rem] font-semibold text-[var(--text-primary)] m-0">{user.fullName}</p>
+                      <p className="text-[0.75rem] text-[var(--text-muted)] mt-[2px] m-0">
                         {user.emailAddresses[0]?.emailAddress}
                       </p>
                     </div>
                     <button
                       onClick={() => signOut(() => router.push("/"))}
-                      className="navbar-dropdown-item"
+                      className="flex items-center gap-2 w-full px-4 py-[0.65rem] bg-transparent border-none text-[var(--text-secondary)] text-[0.85rem] cursor-pointer transition-all duration-150 font-inherit hover:bg-[var(--bg-card-hover)] hover:text-[#ef4444]"
                     >
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
@@ -108,10 +108,10 @@ export default function Navbar() {
             </>
           ) : isLoaded ? (
             <>
-              <Link href="/sign-in" className="navbar-link">
+              <Link href="/sign-in" className="text-[var(--text-secondary)] no-underline font-sans text-[0.85rem] font-medium px-3 py-1.5 rounded-md border border-transparent transition-all duration-200 hover:text-[var(--accent)] hover:border-[var(--border-color)] hover:bg-[var(--bg-card)]">
                 Sign In
               </Link>
-              <Link href="/sign-up" className="navbar-cta">
+              <Link href="/sign-up" className="[background:var(--btn-primary-bg)] text-[var(--btn-primary-text)] no-underline font-mono text-[1.15rem] font-normal px-[1.2rem] py-1.5 rounded-md transition-all duration-200 shadow-[0_0_12px_var(--accent-glow)] hover:-translate-y-[1px] hover:shadow-[0_0_24px_var(--accent-glow-strong)]">
                 Get Started
               </Link>
             </>

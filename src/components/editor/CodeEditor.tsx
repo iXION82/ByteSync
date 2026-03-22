@@ -114,7 +114,7 @@ export default function CodeEditor({ language, value, onChange }: CodeEditorProp
   };
 
   return (
-    <div className="code-editor-wrapper">
+    <div className="h-full w-full">
       <Editor
         height="100%"
         language={language}
@@ -124,7 +124,7 @@ export default function CodeEditor({ language, value, onChange }: CodeEditorProp
         theme={theme}
         options={{
           fontSize: 14,
-          fontFamily: "'IBM Plex Mono', 'Fira Code', 'Courier New', monospace",
+          fontFamily: "'IBM Plex Mono', 'Fira Code', 'Courier学习 New', monospace",
           fontLigatures: true,
           minimap: { enabled: false },
           scrollBeyondLastLine: false,
@@ -140,9 +140,9 @@ export default function CodeEditor({ language, value, onChange }: CodeEditorProp
           tabSize: 2,
         }}
         loading={
-          <div className="editor-loading">
-            <span className="editor-loading-text">&gt; Loading editor...</span>
-            <span className="editor-loading-cursor">█</span>
+          <div className="flex items-center justify-center gap-2 h-full bg-[var(--bg-primary)] font-sans text-[0.9rem] text-[var(--text-muted)]">
+            <span className="text-[var(--accent)]">&gt; Loading editor...</span>
+            <span className="text-[var(--accent)]" style={{ animation: "blink 1s step-end infinite" }}>█</span>
           </div>
         }
       />
