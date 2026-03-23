@@ -4,9 +4,12 @@ import { getDatabase } from "@/lib/mongodb";
 // ─── User Document Interface ────────────────────────────────────
 export interface UserDocument {
   clerkId: string;
+  username: string;
   email: string;
   name: string;
   imageUrl?: string;
+  joinedRoomIds: ObjectId[];   // max 3 rooms the user has joined
+  createdRoomIds: ObjectId[];  // max 3 rooms the user has created
   createdAt: Date;
   updatedAt: Date;
 }
@@ -22,6 +25,7 @@ async function getUsersCollection() {
   if (!indexesEnsured) {
     await collection.createIndex({ clerkId: 1 }, { unique: true });
     await collection.createIndex({ email: 1 }, { unique: true });
+    await collection.createIndex({ username: 1 }, { unique: true });
     indexesEnsured = true;
   }
 
@@ -34,22 +38,24 @@ async function getUsersCollection() {
  * Create a new user in MongoDB (typically called from Clerk webhook)
  */
 export async function createUser(
-  data: Omit<UserDocument, "createdAt" | "updatedAt">
+  data: Omit<UserDocument, "createdAt" | "updatedAt" | "joinedRoomIds" | "createdRoomIds">
 ): Promise<WithId<UserDocument>> {
   const collection = await getUsersCollection();
   const now = new Date();
 
-  const result = await collection.insertOne({
+  const doc: UserDocument = {
     ...data,
+    joinedRoomIds: [],
+    createdRoomIds: [],
     createdAt: now,
     updatedAt: now,
-  });
+  };
+
+  const result = await collection.insertOne(doc);
 
   return {
     _id: result.insertedId,
-    ...data,
-    createdAt: now,
-    updatedAt: now,
+    ...doc,
   };
 }
 
@@ -61,6 +67,16 @@ export async function findUserByClerkId(
 ): Promise<WithId<UserDocument> | null> {
   const collection = await getUsersCollection();
   return collection.findOne({ clerkId });
+}
+
+/**
+ * Find a user by their username
+ */
+export async function findUserByUsername(
+  username: string
+): Promise<WithId<UserDocument> | null> {
+  const collection = await getUsersCollection();
+  return collection.findOne({ username });
 }
 
 /**
@@ -94,6 +110,91 @@ export async function updateUserByClerkId(
   const result = await collection.findOneAndUpdate(
     { clerkId },
     { $set: { ...data, updatedAt: new Date() } },
+    { returnDocument: "after" }
+  );
+  return result;
+}
+
+/**
+ * Add a joined room ID to a user (max 3)
+ */
+export async function addJoinedRoom(
+  userId: string,
+  roomId: ObjectId
+): Promise<WithId<UserDocument> | null> {
+  const collection = await getUsersCollection();
+
+  // Only push if user has fewer than 3 joined rooms
+  const result = await collection.findOneAndUpdate(
+    {
+      _id: new ObjectId(userId),
+      $expr: { $lt: [{ $size: "$joinedRoomIds" }, 3] },
+    },
+    {
+      $addToSet: { joinedRoomIds: roomId },
+      $set: { updatedAt: new Date() },
+    },
+    { returnDocument: "after" }
+  );
+  return result;
+}
+
+/**
+ * Remove a joined room ID from a user
+ */
+export async function removeJoinedRoom(
+  userId: string,
+  roomId: ObjectId
+): Promise<WithId<UserDocument> | null> {
+  const collection = await getUsersCollection();
+  const result = await collection.findOneAndUpdate(
+    { _id: new ObjectId(userId) },
+    {
+      $pull: { joinedRoomIds: roomId },
+      $set: { updatedAt: new Date() },
+    },
+    { returnDocument: "after" }
+  );
+  return result;
+}
+
+/**
+ * Add a created room ID to a user (max 3)
+ */
+export async function addCreatedRoom(
+  userId: string,
+  roomId: ObjectId
+): Promise<WithId<UserDocument> | null> {
+  const collection = await getUsersCollection();
+
+  const result = await collection.findOneAndUpdate(
+    {
+      _id: new ObjectId(userId),
+      $expr: { $lt: [{ $size: "$createdRoomIds" }, 3] },
+    },
+    {
+      $addToSet: { createdRoomIds: roomId },
+      $set: { updatedAt: new Date() },
+    },
+    { returnDocument: "after" }
+  );
+  return result;
+}
+
+/**
+ * Remove a created room ID from a user
+ */
+export async function removeCreatedRoom(
+  userId: string,
+  roomId: ObjectId
+): Promise<WithId<UserDocument> | null> {
+  const collection = await getUsersCollection();
+  const result = await collection.findOneAndUpdate(
+    { _id: new ObjectId(userId) },
+    {
+      $pull: { createdRoomIds: roomId },
+      $set: { updatedAt: new Date() },
+    },
     { returnDocument: "after" }
   );
   return result;
