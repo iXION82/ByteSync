@@ -4,6 +4,7 @@ import { useUser, useClerk } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
+import { ensureUserInDb } from "@/lib/ensureUser";
 
 const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:4000";
 
@@ -33,6 +34,9 @@ export default function DashboardPage() {
     if (!user) return;
     setIsLoadingRooms(true);
     try {
+      // Ensure user is synced to MongoDB
+      await ensureUserInDb(user);
+
       const res = await fetch(`${SERVER_URL}/api/users/${user.id}/rooms`);
       if (res.ok) {
         const data = await res.json();

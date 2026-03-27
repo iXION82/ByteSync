@@ -1,11 +1,10 @@
 import { NextResponse } from "next/server";
-import { createUser, findUserByClerkId } from "@/models/User";
+import { getDatabase } from "@/lib/mongodb";
 
 /**
  * POST /api/users
- * Saves user details (clerkId, email, name) to MongoDB.
- * Called directly from the sign-up form after successful registration.
- * In production, this can be replaced/supplemented by Clerk webhooks.
+ * Ensures a user exists in MongoDB with the correct clerkId.
+ * Uses upsert to handle all edge cases (new user, mismatched clerkId, missing fields).
  */
 export async function POST(req: Request) {
   try {
@@ -19,29 +18,48 @@ export async function POST(req: Request) {
       );
     }
 
-    // Check if user already exists (prevent duplicates)
-    const existingUser = await findUserByClerkId(clerkId);
-    if (existingUser) {
-      return NextResponse.json(
-        { message: "User already exists", user: existingUser },
-        { status: 200 }
+    const db = await getDatabase();
+    const collection = db.collection("users");
+
+    // Upsert: find by email, update clerkId and missing fields
+    const result = await collection.findOneAndUpdate(
+      { email },
+      {
+        $set: {
+          clerkId,
+          email,
+          name: name || "",
+          imageUrl: imageUrl || null,
+          updatedAt: new Date(),
+        },
+        $setOnInsert: {
+          username: email.split("@")[0] || clerkId,
+          joinedRoomIds: [],
+          createdRoomIds: [],
+          activeRoomId: null,
+          createdAt: new Date(),
+        },
+      },
+      { upsert: true, returnDocument: "after" }
+    );
+
+    // Also ensure username exists on existing docs
+    if (result && !result.username) {
+      await collection.updateOne(
+        { email },
+        { $set: { username: email.split("@")[0] || clerkId } }
       );
     }
 
-    const user = await createUser({
-      clerkId,
-      email,
-      name: name || "",
-      username: email.split("@")[0] || clerkId,
-      imageUrl: imageUrl || undefined,
-    });
-
-    console.log(`✓ User saved to MongoDB: ${clerkId}`);
-    return NextResponse.json({ message: "User created", user }, { status: 201 });
-  } catch (error) {
-    console.error("Failed to save user to MongoDB:", error);
+    console.log(`✓ User synced to MongoDB: ${clerkId}`);
     return NextResponse.json(
-      { error: "Failed to save user" },
+      { message: "User synced", user: result },
+      { status: 200 }
+    );
+  } catch (error) {
+    console.error("Failed to sync user to MongoDB:", error);
+    return NextResponse.json(
+      { error: "Failed to sync user" },
       { status: 500 }
     );
   }

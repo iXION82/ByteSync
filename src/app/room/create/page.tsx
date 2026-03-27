@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { LANGUAGES, DEFAULT_LANGUAGE_ID } from "@/lib/editorConstants";
+import { ensureUserInDb } from "@/lib/ensureUser";
 
 const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:4000";
 
@@ -40,6 +41,9 @@ export default function CreateRoomPage() {
 
     setIsLoading(true);
     try {
+      // Ensure user is synced to MongoDB first
+      await ensureUserInDb(user);
+
       const res = await fetch(`${SERVER_URL}/api/rooms/create`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
