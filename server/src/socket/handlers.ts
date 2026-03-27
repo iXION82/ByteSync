@@ -2,7 +2,7 @@ import { Server, type Socket } from "socket.io";
 import { ObjectId } from "mongodb";
 import { createChatMessage } from "../models/Chat.js";
 import { updateRoomCode, findRoomById } from "../models/Room.js";
-import { findUserById } from "../models/User.js";
+import { findUserById, setActiveRoom, clearActiveRoom } from "../models/User.js";
 
 // Track connected users per room
 const roomUsers = new Map<string, Map<string, { socketId: string; username: string; userId: string }>>();
@@ -57,6 +57,13 @@ export function registerSocketHandlers(io: Server) {
           username: user.username || user.name,
           userId,
         });
+
+        // Set active room in DB
+        try {
+          await setActiveRoom(userId, new ObjectId(roomId));
+        } catch (err) {
+          console.error("Error setting active room:", err);
+        }
 
         // Notify room of new user
         io.to(roomId).emit("user-joined", {
@@ -144,7 +151,7 @@ export function registerSocketHandlers(io: Server) {
     });
 
     // ─── Leave Room ───────────────────────────────────────────
-    socket.on("leave-room", () => {
+    socket.on("leave-room", async () => {
       if (!currentRoomId) return;
 
       socket.leave(currentRoomId);
@@ -155,13 +162,22 @@ export function registerSocketHandlers(io: Server) {
         users: getUsersInRoom(currentRoomId),
       });
 
+      // Clear active room in DB
+      if (currentUserId) {
+        try {
+          await clearActiveRoom(currentUserId);
+        } catch (err) {
+          console.error("Error clearing active room:", err);
+        }
+      }
+
       console.log(`👤 User ${currentUserId} left room ${currentRoomId}`);
       currentRoomId = null;
       currentUserId = null;
     });
 
     // ─── Disconnect ───────────────────────────────────────────
-    socket.on("disconnect", () => {
+    socket.on("disconnect", async () => {
       if (currentRoomId) {
         removeUserFromTracking(currentRoomId, socket.id);
         io.to(currentRoomId).emit("user-left", {
@@ -169,6 +185,16 @@ export function registerSocketHandlers(io: Server) {
           users: getUsersInRoom(currentRoomId),
         });
       }
+
+      // Clear active room in DB
+      if (currentUserId) {
+        try {
+          await clearActiveRoom(currentUserId);
+        } catch (err) {
+          console.error("Error clearing active room on disconnect:", err);
+        }
+      }
+
       console.log(`⚡ Client disconnected: ${socket.id}`);
     });
   });

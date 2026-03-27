@@ -10,6 +10,7 @@ export interface UserDocument {
   imageUrl?: string;
   joinedRoomIds: ObjectId[];   // max 3 rooms the user has joined
   createdRoomIds: ObjectId[];  // max 3 rooms the user has created
+  activeRoomId: ObjectId | null;  // currently active room (one at a time)
   createdAt: Date;
   updatedAt: Date;
 }
@@ -38,7 +39,7 @@ async function getUsersCollection() {
  * Create a new user in MongoDB (typically called from Clerk webhook)
  */
 export async function createUser(
-  data: Omit<UserDocument, "createdAt" | "updatedAt" | "joinedRoomIds" | "createdRoomIds">
+  data: Omit<UserDocument, "createdAt" | "updatedAt" | "joinedRoomIds" | "createdRoomIds" | "activeRoomId">
 ): Promise<WithId<UserDocument>> {
   const collection = await getUsersCollection();
   const now = new Date();
@@ -47,6 +48,7 @@ export async function createUser(
     ...data,
     joinedRoomIds: [],
     createdRoomIds: [],
+    activeRoomId: null,
     createdAt: now,
     updatedAt: now,
   };

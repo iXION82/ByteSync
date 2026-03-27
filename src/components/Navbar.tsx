@@ -92,6 +92,18 @@ export default function Navbar() {
                       </p>
                     </div>
                     <button
+                      onClick={() => { setMenuOpen(false); router.push("/dashboard"); }}
+                      className="flex items-center gap-2 w-full px-4 py-[0.65rem] bg-transparent border-none text-[var(--text-secondary)] text-[0.85rem] cursor-pointer transition-all duration-150 font-inherit hover:bg-[var(--bg-card-hover)] hover:text-[var(--accent)]"
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <rect x="3" y="3" width="7" height="7" />
+                        <rect x="14" y="3" width="7" height="7" />
+                        <rect x="14" y="14" width="7" height="7" />
+                        <rect x="3" y="14" width="7" height="7" />
+                      </svg>
+                      Dashboard
+                    </button>
+                    <button
                       onClick={() => signOut(() => router.push("/"))}
                       className="flex items-center gap-2 w-full px-4 py-[0.65rem] bg-transparent border-none text-[var(--text-secondary)] text-[0.85rem] cursor-pointer transition-all duration-150 font-inherit hover:bg-[var(--bg-card-hover)] hover:text-[#ef4444]"
                     >

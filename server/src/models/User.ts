@@ -10,6 +10,7 @@ export interface UserDocument {
   imageUrl?: string;
   joinedRoomIds: ObjectId[];
   createdRoomIds: ObjectId[];
+  activeRoomId: ObjectId | null;  // currently active room (one at a time)
   createdAt: Date;
   updatedAt: Date;
 }
@@ -119,6 +120,41 @@ export async function removeCreatedRoom(
     {
       $pull: { createdRoomIds: roomId },
       $set: { updatedAt: new Date() },
+    },
+    { returnDocument: "after" }
+  );
+  return result;
+}
+
+/**
+ * Set the user's active room (one at a time)
+ */
+export async function setActiveRoom(
+  userId: string,
+  roomId: ObjectId
+): Promise<WithId<UserDocument> | null> {
+  const collection = await getUsersCollection();
+  const result = await collection.findOneAndUpdate(
+    { _id: new ObjectId(userId) },
+    {
+      $set: { activeRoomId: roomId, updatedAt: new Date() },
+    },
+    { returnDocument: "after" }
+  );
+  return result;
+}
+
+/**
+ * Clear the user's active room
+ */
+export async function clearActiveRoom(
+  userId: string
+): Promise<WithId<UserDocument> | null> {
+  const collection = await getUsersCollection();
+  const result = await collection.findOneAndUpdate(
+    { _id: new ObjectId(userId) },
+    {
+      $set: { activeRoomId: null, updatedAt: new Date() },
     },
     { returnDocument: "after" }
   );

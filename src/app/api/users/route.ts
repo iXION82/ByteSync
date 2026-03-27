@@ -32,6 +32,7 @@ export async function POST(req: Request) {
       clerkId,
       email,
       name: name || "",
+      username: email.split("@")[0] || clerkId,
       imageUrl: imageUrl || undefined,
     });
 

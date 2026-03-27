@@ -65,14 +65,18 @@ export async function POST(req: Request) {
   try {
     switch (eventType) {
       case "user.created": {
+        const clerkId = data.id as string;
         const emailAddresses = data.email_addresses as
           | { email_address: string }[]
           | undefined;
+        const email = emailAddresses?.[0]?.email_address || "";
+        const name = `${(data.first_name as string) || ""} ${(data.last_name as string) || ""}`.trim();
 
         await createUser({
-          clerkId: data.id as string,
-          email: emailAddresses?.[0]?.email_address || "",
-          name: `${(data.first_name as string) || ""} ${(data.last_name as string) || ""}`.trim(),
+          clerkId,
+          email,
+          name,
+          username: (data.username as string) || email.split("@")[0] || clerkId,
           imageUrl: (data.image_url as string) || undefined,
         });
 

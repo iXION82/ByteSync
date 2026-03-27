@@ -6,6 +6,7 @@ import cors from "cors";
 import clientPromise from "./db.js";
 import roomRoutes from "./routes/room.js";
 import chatRoutes from "./routes/chat.js";
+import userRoutes from "./routes/user.js";
 import { registerSocketHandlers } from "./socket/handlers.js";
 
 const PORT = parseInt(process.env.PORT || "4000", 10);
@@ -24,6 +25,7 @@ app.get("/health", (_req, res) => {
 // ─── REST Routes ────────────────────────────────────────────────
 app.use("/api/rooms", roomRoutes);
 app.use("/api/chats", chatRoutes);
+app.use("/api/users", userRoutes);
 
 // ─── HTTP + Socket.IO Server ────────────────────────────────────
 const httpServer = createServer(app);
