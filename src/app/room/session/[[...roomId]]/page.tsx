@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import dynamic from "next/dynamic";
 import { useParams, useRouter } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import CodeRunner from "@/components/editor/CodeRunner";
 import { LANGUAGES, DEFAULT_LANGUAGE_ID, getLanguageById } from "@/lib/editorConstants";
+import { useSocket, type SocketUser } from "@/hooks/useSocket";
 
 // Dynamic import Monaco to avoid SSR issues
 const CodeEditor = dynamic(() => import("@/components/editor/CodeEditor"), {
@@ -30,7 +31,13 @@ const PARTICIPANT_COLORS = [
   { bg: "rgba(139, 92, 246, 0.2)", border: "#a78bfa", text: "#a78bfa" },
 ];
 
-interface Participant {
+interface RoomOwner {
+  userId: string;
+  name: string;
+  username: string;
+}
+
+interface RoomParticipant {
   userId: string;
   role: string;
   name: string;
@@ -43,8 +50,8 @@ interface RoomDetails {
   codeLanguage: string;
   code: string;
   isActive: boolean;
-  owner: { userId: string; name: string; username: string } | null;
-  participants: Participant[];
+  owner: RoomOwner | null;
+  participants: RoomParticipant[];
 }
 
 export default function SessionPage() {
@@ -56,9 +63,11 @@ export default function SessionPage() {
     ? (Array.isArray(params.roomId) ? params.roomId.join("/") : params.roomId)
     : "";
 
+  // Room details (fetched from REST API)
   const [roomDetails, setRoomDetails] = useState<RoomDetails | null>(null);
   const [roomLoading, setRoomLoading] = useState(true);
 
+  // Editor state
   const [languageId, setLanguageId] = useState(DEFAULT_LANGUAGE_ID);
   const [code, setCode] = useState(
     getLanguageById(DEFAULT_LANGUAGE_ID)?.starterCode || ""
@@ -68,10 +77,17 @@ export default function SessionPage() {
   const [isRunning, setIsRunning] = useState(false);
   const [executionTime, setExecutionTime] = useState<number | null>(null);
   const [copied, setCopied] = useState(false);
+  const [lastSaved, setLastSaved] = useState<string | null>(null);
+
+  // Live participants from socket
+  const [liveUsers, setLiveUsers] = useState<SocketUser[]>([]);
+
+  // Flag to suppress emitting code-change when receiving remote updates
+  const isRemoteUpdate = useRef(false);
 
   const currentLang = getLanguageById(languageId)!;
 
-  // Fetch room details on mount
+  // ─── Fetch room details on mount ───────────────────────────
   useEffect(() => {
     if (!roomIdStr) return;
 
@@ -100,17 +116,70 @@ export default function SessionPage() {
     fetchRoom();
   }, [roomIdStr]);
 
+  // ─── Socket integration ────────────────────────────────────
+  const { emitCodeChange, emitLanguageChange, emitSave } = useSocket({
+    roomId: roomIdStr,
+    clerkId: user?.id || "",
+    onRoomState: (data) => {
+      // Initial state from server
+      isRemoteUpdate.current = true;
+      setCode(data.code);
+      if (data.codeLanguage) {
+        const lang = LANGUAGES.find(l => l.monacoLang === data.codeLanguage || l.id === data.codeLanguage);
+        if (lang) setLanguageId(lang.id);
+      }
+      setLiveUsers(data.users);
+      // Reset the flag after a tick
+      setTimeout(() => { isRemoteUpdate.current = false; }, 0);
+    },
+    onCodeUpdate: (data) => {
+      // Another user changed the code
+      isRemoteUpdate.current = true;
+      setCode(data.code);
+      setTimeout(() => { isRemoteUpdate.current = false; }, 0);
+    },
+    onLanguageUpdate: (data) => {
+      isRemoteUpdate.current = true;
+      setCode(data.code);
+      const lang = LANGUAGES.find(l => l.monacoLang === data.codeLanguage || l.id === data.codeLanguage);
+      if (lang) setLanguageId(lang.id);
+      setTimeout(() => { isRemoteUpdate.current = false; }, 0);
+    },
+    onUserJoined: (data) => {
+      setLiveUsers(data.users);
+    },
+    onUserLeft: (data) => {
+      setLiveUsers(data.users);
+    },
+    onCodeSaved: (data) => {
+      setLastSaved(new Date(data.timestamp).toLocaleTimeString());
+    },
+  });
+
+  // ─── Code change handler (local edits) ─────────────────────
+  const handleCodeChange = useCallback((newCode: string) => {
+    setCode(newCode);
+
+    // Only emit to socket if this is a local edit (not a remote update)
+    if (!isRemoteUpdate.current) {
+      emitCodeChange(newCode, currentLang.monacoLang);
+    }
+  }, [emitCodeChange, currentLang]);
+
+  // ─── Language change handler ───────────────────────────────
   const handleLanguageChange = useCallback((newLangId: string) => {
     setLanguageId(newLangId);
     const lang = getLanguageById(newLangId);
     if (lang) {
       setCode(lang.starterCode);
+      emitLanguageChange(lang.monacoLang, lang.starterCode);
     }
     setOutput("");
     setError("");
     setExecutionTime(null);
-  }, []);
+  }, [emitLanguageChange]);
 
+  // ─── Run code ──────────────────────────────────────────────
   const handleRunCode = useCallback(async () => {
     setIsRunning(true);
     setOutput("");
@@ -175,6 +244,8 @@ export default function SessionPage() {
 
   const handleLeaveRoom = async () => {
     if (!user || !roomIdStr) return;
+    // Save before leaving
+    emitSave();
     try {
       await fetch(`${SERVER_URL}/api/rooms/leave`, {
         method: "POST",
@@ -194,7 +265,6 @@ export default function SessionPage() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // Get initials from name
   const getInitials = (name: string) => {
     return name
       .split(" ")
@@ -203,10 +273,6 @@ export default function SessionPage() {
       .toUpperCase()
       .slice(0, 2);
   };
-
-  // Check if current user is owner
-  const isOwner = user && roomDetails?.owner?.userId &&
-    roomDetails.owner.userId === (roomDetails as RoomDetails & { ownerId?: string }).ownerId?.toString();
 
   return (
     <div className="flex flex-col h-screen pt-16 bg-background overflow-hidden w-full">
@@ -221,6 +287,12 @@ export default function SessionPage() {
               <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
             </svg>
             <span>SESSION_ROOM</span>
+            {/* Live indicator */}
+            <span
+              className="w-2 h-2 rounded-full ml-1"
+              style={{ background: "#22c55e", animation: "badge-pulse 2s infinite" }}
+              title="Connected"
+            />
           </div>
 
           {/* Language Selector */}
@@ -242,6 +314,19 @@ export default function SessionPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Save button */}
+          <button
+            className="flex items-center gap-[0.35rem] font-mono text-[1.05rem] font-normal py-[0.3rem] px-[0.9rem] rounded-md cursor-pointer transition-all duration-200 border border-(--border-color) whitespace-nowrap tracking-[0.02em] bg-transparent text-(--text-muted) hover:border-(--border-hover) hover:bg-(--bg-card)"
+            onClick={() => emitSave()}
+            title="Save code to database"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+              <polyline points="17 21 17 13 7 13 7 21" />
+              <polyline points="7 3 7 8 15 8" />
+            </svg>
+            SAVE
+          </button>
           <button
             className="flex items-center gap-[0.35rem] font-mono text-[1.05rem] font-normal py-[0.3rem] px-[0.9rem] rounded-md cursor-pointer transition-all duration-200 border border-(--border-color) whitespace-nowrap tracking-[0.02em] disabled:opacity-50 disabled:cursor-not-allowed bg-transparent text-(--text-muted) hover:border-(--border-hover) hover:bg-(--bg-card)"
             onClick={handleClearOutput}
@@ -283,7 +368,7 @@ export default function SessionPage() {
           <CodeEditor
             language={currentLang.monacoLang}
             value={code}
-            onChange={setCode}
+            onChange={handleCodeChange}
           />
         </div>
 
@@ -345,76 +430,59 @@ export default function SessionPage() {
 
           <div className="w-px h-8 bg-(--border-color) mx-2 hidden sm:block" />
 
-          {/* Participants */}
+          {/* Live Participants */}
           <div className="flex flex-col h-full justify-center">
             <span className="text-[0.65rem] text-(--text-muted) font-mono uppercase tracking-wider mb-1">
-              PARTICIPANTS ({roomLoading ? "..." : (roomDetails?.participants?.length || 0) + (roomDetails?.owner ? 1 : 0)})
+              LIVE ({liveUsers.length})
             </span>
             <div className="flex items-center gap-4">
-              {roomLoading ? (
-                <span className="text-xs text-(--text-muted)">Loading...</span>
-              ) : (
-                <>
-                  {/* Owner */}
-                  {roomDetails?.owner && (
-                    <div className="flex items-center gap-2">
+              {liveUsers.map((u, i) => {
+                const color = PARTICIPANT_COLORS[i % PARTICIPANT_COLORS.length];
+                const isMe = user && u.userId === user.id;
+                return (
+                  <div key={u.socketId} className="flex items-center gap-2">
+                    <div className="relative">
                       <div
-                        className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold shadow-[0_0_5px_var(--accent-glow)]"
+                        className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold"
                         style={{
-                          background: "rgba(var(--accent-rgb, 0,255,136), 0.2)",
-                          border: "1px solid var(--accent)",
-                          color: "var(--accent)",
+                          background: isMe ? "rgba(var(--accent-rgb, 0,255,136), 0.2)" : color.bg,
+                          border: `1px solid ${isMe ? "var(--accent)" : color.border}`,
+                          color: isMe ? "var(--accent)" : color.text,
                         }}
                       >
-                        {getInitials(roomDetails.owner.name || roomDetails.owner.username)}
+                        {getInitials(u.username)}
                       </div>
-                      <div className="flex flex-col leading-tight">
-                        <span className="text-[13px] font-medium text-foreground">
-                          {user && roomDetails.owner.userId === user.id
-                            ? "You"
-                            : roomDetails.owner.name || roomDetails.owner.username}
-                        </span>
-                        <span className="text-[9px] text-(--text-muted) uppercase font-mono">Owner</span>
-                      </div>
+                      {/* Online dot */}
+                      <span
+                        className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-(--bg-secondary)"
+                        style={{ background: "#22c55e" }}
+                      />
                     </div>
-                  )}
-
-                  {/* Allowed Users */}
-                  {roomDetails?.participants?.map((p, i) => {
-                    const color = PARTICIPANT_COLORS[i % PARTICIPANT_COLORS.length];
-                    const isMe = user && p.userId === user.id;
-                    return (
-                      <div key={p.userId} className="flex items-center gap-2">
-                        <div
-                          className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold"
-                          style={{
-                            background: color.bg,
-                            border: `1px solid ${color.border}`,
-                            color: color.text,
-                          }}
-                        >
-                          {getInitials(p.name || p.username)}
-                        </div>
-                        <div className="flex flex-col leading-tight">
-                          <span className="text-[13px] font-medium text-foreground">
-                            {isMe ? "You" : p.name || p.username}
-                          </span>
-                          <span className="text-[9px] text-(--text-muted) uppercase font-mono">
-                            {p.role}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })}
-
-                  {/* Empty state */}
-                  {!roomDetails?.participants?.length && !roomDetails?.owner && (
-                    <span className="text-xs text-(--text-muted)">No participants yet</span>
-                  )}
-                </>
+                    <div className="flex flex-col leading-tight">
+                      <span className="text-[13px] font-medium text-foreground">
+                        {isMe ? "You" : u.username}
+                      </span>
+                      <span className="text-[9px] text-(--text-muted) uppercase font-mono">Online</span>
+                    </div>
+                  </div>
+                );
+              })}
+              {liveUsers.length === 0 && (
+                <span className="text-xs text-(--text-muted)">Connecting...</span>
               )}
             </div>
           </div>
+
+          {/* Last saved */}
+          {lastSaved && (
+            <>
+              <div className="w-px h-8 bg-(--border-color) mx-2 hidden sm:block" />
+              <div className="flex flex-col">
+                <span className="text-[0.65rem] text-(--text-muted) font-mono uppercase tracking-wider">SAVED</span>
+                <span className="text-xs text-(--text-muted) font-mono mt-1">{lastSaved}</span>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Leave Room */}
