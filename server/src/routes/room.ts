@@ -12,6 +12,7 @@ import {
 } from "../models/Room.js";
 import {
   findUserByClerkId,
+  findUserById,
   addJoinedRoom,
   removeJoinedRoom,
   addCreatedRoom,
@@ -180,6 +181,46 @@ router.post("/leave", async (req: Request, res: Response): Promise<void> => {
     res.json({ message: "Left room successfully" });
   } catch (error) {
     console.error("Error leaving room:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ─── Get room details by ID (with resolved participant names) ───
+router.get("/details/:roomId", async (req: Request<{ roomId: string }>, res: Response): Promise<void> => {
+  try {
+    const room = await findRoomById(req.params.roomId);
+    if (!room) {
+      res.status(404).json({ error: "Room not found" });
+      return;
+    }
+
+    // Resolve owner info
+    const owner = await findUserById(room.ownerId.toString());
+
+    // Resolve allowed users info
+    const participants = await Promise.all(
+      (room.allowedUsers || []).map(async (au) => {
+        const user = await findUserById(au.userId.toString());
+        return {
+          userId: au.userId.toString(),
+          role: au.role,
+          name: user?.name || user?.username || "Unknown",
+          username: user?.username || "unknown",
+        };
+      })
+    );
+
+    const { passwordHash, ...safeRoom } = room;
+
+    res.json({
+      ...safeRoom,
+      owner: owner
+        ? { userId: owner._id.toString(), name: owner.name, username: owner.username }
+        : null,
+      participants,
+    });
+  } catch (error) {
+    console.error("Error fetching room details:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
