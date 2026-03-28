@@ -156,13 +156,19 @@ export default function SessionPage() {
     },
   });
 
-  // ─── Code change handler (local edits) ─────────────────────
+  // ─── Code change handler (local edits, debounced emit) ──────
+  const debounceTimer = useRef<NodeJS.Timeout | null>(null);
+
   const handleCodeChange = useCallback((newCode: string) => {
     setCode(newCode);
 
     // Only emit to socket if this is a local edit (not a remote update)
     if (!isRemoteUpdate.current) {
-      emitCodeChange(newCode, currentLang.monacoLang);
+      // Debounce: wait 150ms after last keystroke before sending
+      if (debounceTimer.current) clearTimeout(debounceTimer.current);
+      debounceTimer.current = setTimeout(() => {
+        emitCodeChange(newCode, currentLang.monacoLang);
+      }, 150);
     }
   }, [emitCodeChange, currentLang]);
 

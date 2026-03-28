@@ -1,16 +1,21 @@
 "use client";
 
 import Editor, { OnMount } from "@monaco-editor/react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
+import type * as Monaco from "monaco-editor";
 
 interface CodeEditorProps {
   language: string;
   value: string;
   onChange: (value: string) => void;
+  /** If true, the value was set by a remote user (avoids green flash) */
+  isRemoteValue?: boolean;
 }
 
-export default function CodeEditor({ language, value, onChange }: CodeEditorProps) {
+export default function CodeEditor({ language, value, onChange, isRemoteValue }: CodeEditorProps) {
   const [theme, setTheme] = useState<"bytesync-dark" | "bytesync-light">("bytesync-dark");
+  const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
+  const isSettingValue = useRef(false);
 
   useEffect(() => {
     // Sync with document theme
@@ -29,7 +34,33 @@ export default function CodeEditor({ language, value, onChange }: CodeEditorProp
     return () => observer.disconnect();
   }, []);
 
+  // Handle remote value updates — push directly to Monaco model to avoid green flash
+  useEffect(() => {
+    if (!isRemoteValue || !editorRef.current) return;
+
+    const editor = editorRef.current;
+    const model = editor.getModel();
+    if (!model) return;
+
+    const currentValue = model.getValue();
+    if (currentValue === value) return;
+
+    // Use pushEditOperations to replace the entire content without highlighting
+    isSettingValue.current = true;
+    const fullRange = model.getFullModelRange();
+    editor.executeEdits("remote-sync", [
+      {
+        range: fullRange,
+        text: value,
+        forceMoveMarkers: true,
+      },
+    ]);
+    isSettingValue.current = false;
+  }, [value, isRemoteValue]);
+
   const handleEditorMount: OnMount = (editor, monaco) => {
+    editorRef.current = editor;
+
     // Define custom dark theme — CRT green phosphor
     monaco.editor.defineTheme("bytesync-dark", {
       base: "vs-dark",
@@ -113,18 +144,27 @@ export default function CodeEditor({ language, value, onChange }: CodeEditorProp
     editor.focus();
   };
 
+  const handleChange = useCallback(
+    (val: string | undefined) => {
+      // Ignore changes triggered by our own remote-sync edits
+      if (isSettingValue.current) return;
+      onChange(val || "");
+    },
+    [onChange]
+  );
+
   return (
     <div className="h-full w-full">
       <Editor
         height="100%"
         language={language}
         value={value}
-        onChange={(val) => onChange(val || "")}
+        onChange={handleChange}
         onMount={handleEditorMount}
         theme={theme}
         options={{
           fontSize: 14,
-          fontFamily: "'IBM Plex Mono', 'Fira Code', 'Courier学习 New', monospace",
+          fontFamily: "'IBM Plex Mono', 'Fira Code', 'Courier New', monospace",
           fontLigatures: true,
           minimap: { enabled: false },
           scrollBeyondLastLine: false,
