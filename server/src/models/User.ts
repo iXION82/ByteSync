@@ -52,9 +52,17 @@ export async function addJoinedRoom(
   roomId: ObjectId
 ): Promise<WithId<UserDocument> | null> {
   const collection = await getUsersCollection();
+  const oid = new ObjectId(userId);
+
+  // Ensure joinedRoomIds array exists
+  await collection.updateOne(
+    { _id: oid, joinedRoomIds: { $exists: false } },
+    { $set: { joinedRoomIds: [] } }
+  );
+
   const result = await collection.findOneAndUpdate(
     {
-      _id: new ObjectId(userId),
+      _id: oid,
       $expr: { $lt: [{ $size: "$joinedRoomIds" }, 3] },
     },
     {
@@ -93,9 +101,17 @@ export async function addCreatedRoom(
   roomId: ObjectId
 ): Promise<WithId<UserDocument> | null> {
   const collection = await getUsersCollection();
+  const oid = new ObjectId(userId);
+
+  // Ensure createdRoomIds array exists
+  await collection.updateOne(
+    { _id: oid, createdRoomIds: { $exists: false } },
+    { $set: { createdRoomIds: [] } }
+  );
+
   const result = await collection.findOneAndUpdate(
     {
-      _id: new ObjectId(userId),
+      _id: oid,
       $expr: { $lt: [{ $size: "$createdRoomIds" }, 3] },
     },
     {

@@ -99,16 +99,26 @@ router.post("/join", async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // Check if user is the owner
+    // If user is the owner, let them rejoin
     if (room.ownerId.equals(user._id)) {
-      res.status(400).json({ error: "You are the owner of this room" });
+      res.json({
+        roomId: room._id,
+        roomCode: room.roomCode,
+        codeLanguage: room.codeLanguage,
+        message: "Rejoining your own room",
+      });
       return;
     }
 
-    // Check if user is already in the room
+    // If user is already in the room, let them rejoin
     const alreadyIn = room.allowedUsers.some((u) => u.userId.equals(user._id));
     if (alreadyIn) {
-      res.status(400).json({ error: "Already in this room" });
+      res.json({
+        roomId: room._id,
+        roomCode: room.roomCode,
+        codeLanguage: room.codeLanguage,
+        message: "Rejoining room",
+      });
       return;
     }
 

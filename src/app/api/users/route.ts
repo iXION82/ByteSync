@@ -24,32 +24,25 @@ export async function POST(req: Request) {
     // Upsert: find by email, update clerkId and missing fields
     const result = await collection.findOneAndUpdate(
       { email },
-      {
-        $set: {
-          clerkId,
-          email,
-          name: name || "",
-          imageUrl: imageUrl || null,
-          updatedAt: new Date(),
+      [
+        {
+          $set: {
+            clerkId: clerkId,
+            email: email,
+            name: name || "",
+            imageUrl: imageUrl || null,
+            updatedAt: new Date(),
+            // Ensure arrays exist (use existing value if present, else default)
+            username: { $ifNull: ["$username", email.split("@")[0] || clerkId] },
+            joinedRoomIds: { $ifNull: ["$joinedRoomIds", []] },
+            createdRoomIds: { $ifNull: ["$createdRoomIds", []] },
+            activeRoomId: { $ifNull: ["$activeRoomId", null] },
+            createdAt: { $ifNull: ["$createdAt", new Date()] },
+          },
         },
-        $setOnInsert: {
-          username: email.split("@")[0] || clerkId,
-          joinedRoomIds: [],
-          createdRoomIds: [],
-          activeRoomId: null,
-          createdAt: new Date(),
-        },
-      },
+      ],
       { upsert: true, returnDocument: "after" }
     );
-
-    // Also ensure username exists on existing docs
-    if (result && !result.username) {
-      await collection.updateOne(
-        { email },
-        { $set: { username: email.split("@")[0] || clerkId } }
-      );
-    }
 
     console.log(`✓ User synced to MongoDB: ${clerkId}`);
     return NextResponse.json(
