@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import dynamic from "next/dynamic";
 import CodeRunner from "@/components/editor/CodeRunner";
 import { LANGUAGES, DEFAULT_LANGUAGE_ID, getLanguageById } from "@/lib/editorConstants";
+import type { CodeEditorHandle } from "@/components/editor/CodeEditor";
 
 // Dynamic import Monaco to avoid SSR issues
 const CodeEditor = dynamic(() => import("@/components/editor/CodeEditor"), {
@@ -29,12 +30,14 @@ export default function SoloRoomPage() {
   const [executionTime, setExecutionTime] = useState<number | null>(null);
 
   const currentLang = getLanguageById(languageId)!;
+  const soloEditorRef = useRef<CodeEditorHandle | null>(null);
 
   const handleLanguageChange = useCallback((newLangId: string) => {
     setLanguageId(newLangId);
     const lang = getLanguageById(newLangId);
     if (lang) {
       setCode(lang.starterCode);
+      soloEditorRef.current?.setCode(lang.starterCode);
     }
 
     setOutput("");
@@ -172,8 +175,9 @@ export default function SoloRoomPage() {
       <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
         <div className="h-[55%] md:h-auto md:flex-1 min-w-0 overflow-hidden border-b md:border-b-0 md:border-r border-(--border-color)">
           <CodeEditor
+            ref={soloEditorRef}
             language={currentLang.monacoLang}
-            value={code}
+            initialValue={code}
             onChange={setCode}
           />
         </div>

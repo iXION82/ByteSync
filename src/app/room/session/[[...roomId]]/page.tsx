@@ -184,6 +184,7 @@ export default function SessionPage() {
     const lang = getLanguageById(newLangId);
     if (lang) {
       setCode(lang.starterCode);
+      editorRef.current?.setCode(lang.starterCode);
       emitLanguageChange(lang.monacoLang, lang.starterCode);
     }
     setOutput("");
@@ -380,7 +381,7 @@ export default function SessionPage() {
           <CodeEditor
             ref={editorRef}
             language={currentLang.monacoLang}
-            value={code}
+            initialValue={code}
             onChange={handleCodeChange}
           />
         </div>

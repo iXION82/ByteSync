@@ -6,46 +6,83 @@ import type * as Monaco from "monaco-editor";
 
 interface CodeEditorProps {
   language: string;
-  value: string;
+  initialValue?: string;
   onChange: (value: string) => void;
 }
 
 export interface CodeEditorHandle {
   /** Push code from a remote user without triggering the green diff flash */
   setRemoteCode: (code: string) => void;
+  /** Set code programmatically (e.g. language switch) — also no flash */
+  setCode: (code: string) => void;
+  /** Get the current code */
+  getCode: () => string;
 }
 
 const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
-  function CodeEditor({ language, value, onChange }, ref) {
+  function CodeEditor({ language, initialValue = "", onChange }, ref) {
     const [theme, setTheme] = useState<"bytesync-dark" | "bytesync-light">("bytesync-dark");
     const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
-    const isSettingRemote = useRef(false);
+    const isInternalEdit = useRef(false);
 
-    // Expose imperative handle for remote code updates
-    useImperativeHandle(ref, () => ({
-      setRemoteCode: (code: string) => {
+    /**
+     * Compute the minimal edit between oldText and newText,
+     * then apply only the changed range via executeEdits.
+     * This avoids re-tokenizing the entire document (no green flash).
+     */
+    const applyMinimalEdit = useCallback(
+      (newCode: string, source: string) => {
         const editor = editorRef.current;
         if (!editor) return;
-
         const model = editor.getModel();
         if (!model) return;
 
-        // Skip if content is the same
-        if (model.getValue() === code) return;
+        const oldCode = model.getValue();
+        if (oldCode === newCode) return;
 
-        // Use executeEdits to avoid the green diff flash
-        isSettingRemote.current = true;
-        const fullRange = model.getFullModelRange();
-        editor.executeEdits("remote-sync", [
+        // Find the first character that differs
+        let start = 0;
+        while (start < oldCode.length && start < newCode.length && oldCode[start] === newCode[start]) {
+          start++;
+        }
+
+        // Find the last character that differs (from the end)
+        let oldEnd = oldCode.length;
+        let newEnd = newCode.length;
+        while (oldEnd > start && newEnd > start && oldCode[oldEnd - 1] === newCode[newEnd - 1]) {
+          oldEnd--;
+          newEnd--;
+        }
+
+        // Convert character offsets to Monaco positions
+        const startPos = model.getPositionAt(start);
+        const endPos = model.getPositionAt(oldEnd);
+        const insertText = newCode.substring(start, newEnd);
+
+        isInternalEdit.current = true;
+        editor.executeEdits(source, [
           {
-            range: fullRange,
-            text: code,
+            range: {
+              startLineNumber: startPos.lineNumber,
+              startColumn: startPos.column,
+              endLineNumber: endPos.lineNumber,
+              endColumn: endPos.column,
+            },
+            text: insertText,
             forceMoveMarkers: true,
           },
         ]);
-        isSettingRemote.current = false;
+        isInternalEdit.current = false;
       },
-    }));
+      []
+    );
+
+    // Expose imperative handle
+    useImperativeHandle(ref, () => ({
+      setRemoteCode: (code: string) => applyMinimalEdit(code, "remote-sync"),
+      setCode: (code: string) => applyMinimalEdit(code, "programmatic"),
+      getCode: () => editorRef.current?.getModel()?.getValue() || "",
+    }), [applyMinimalEdit]);
 
     useEffect(() => {
       const updateTheme = () => {
@@ -65,7 +102,7 @@ const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
     const handleEditorMount: OnMount = (editor, monaco) => {
       editorRef.current = editor;
 
-      // Define custom dark theme — CRT green phosphor
+      // Define custom dark theme
       monaco.editor.defineTheme("bytesync-dark", {
         base: "vs-dark",
         inherit: true,
@@ -106,10 +143,20 @@ const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
           "scrollbarSlider.background": "#00ff4120",
           "scrollbarSlider.hoverBackground": "#00ff4140",
           "scrollbarSlider.activeBackground": "#00ff4160",
+          // Prevent green flash on programmatic edits
+          "editor.rangeHighlightBackground": "#00000000",
+          "editor.wordHighlightBackground": "#00000000",
+          "editor.wordHighlightStrongBackground": "#00000000",
+          "editor.wordHighlightTextBackground": "#00000000",
+          "editor.findMatchHighlightBackground": "#00000000",
+          "diffEditor.insertedTextBackground": "#00000000",
+          "diffEditor.removedTextBackground": "#00000000",
+          "diffEditor.insertedLineBackground": "#00000000",
+          "diffEditor.removedLineBackground": "#00000000",
         },
       });
 
-      // Define custom light theme — vintage beige
+      // Define custom light theme
       monaco.editor.defineTheme("bytesync-light", {
         base: "vs",
         inherit: true,
@@ -140,18 +187,15 @@ const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
         },
       });
 
-      // Set initial theme
       const current = document.documentElement.getAttribute("data-theme");
       monaco.editor.setTheme(current === "light" ? "bytesync-light" : "bytesync-dark");
 
-      // Focus the editor
       editor.focus();
     };
 
     const handleChange = useCallback(
       (val: string | undefined) => {
-        // Ignore changes triggered by our remote-sync edits
-        if (isSettingRemote.current) return;
+        if (isInternalEdit.current) return;
         onChange(val || "");
       },
       [onChange]
@@ -162,7 +206,7 @@ const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
         <Editor
           height="100%"
           language={language}
-          value={value}
+          defaultValue={initialValue}
           onChange={handleChange}
           onMount={handleEditorMount}
           theme={theme}

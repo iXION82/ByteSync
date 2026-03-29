@@ -192,3 +192,42 @@ body {
   50% { box-shadow: 0 0 0 6px transparent; }
 }
 
+/* ─── Monaco Editor: suppress green flash on programmatic edits ── */
+.monaco-editor .view-overlays .line-insert,
+.monaco-editor .view-overlays .line-delete,
+.monaco-editor .view-overlays .char-insert,
+.monaco-editor .view-overlays .char-delete {
+  background: transparent !important;
+}
+
+.monaco-editor .cigr,
+.monaco-editor .cigra {
+  background: transparent !important;
+  border-color: transparent !important;
+}
+
+.monaco-editor .lines-content .cdr {
+  background: transparent !important;
+}
+
+/* Hide inline edit ghost decorations */
+.monaco-editor .inline-edit-remove,
+.monaco-editor .inline-edit-insert,
+.monaco-editor .inlineEditModified,
+.monaco-editor .inlineEditInserted,
+.monaco-editor .inlineEditRemoved {
+  background: transparent !important;
+  border: none !important;
+}
+
+/* Suppress range highlight flash */
+.monaco-editor .rangeHighlight {
+  background: transparent !important;
+}
+
+/* Prevent word highlight flash */
+.monaco-editor .wordHighlight,
+.monaco-editor .wordHighlightStrong,
+.monaco-editor .wordHighlightText {
+  background: transparent !important;
+}
