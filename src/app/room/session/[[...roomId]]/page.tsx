@@ -7,6 +7,7 @@ import { useUser } from "@clerk/nextjs";
 import CodeRunner from "@/components/editor/CodeRunner";
 import { LANGUAGES, DEFAULT_LANGUAGE_ID, getLanguageById } from "@/lib/editorConstants";
 import { useSocket, type SocketUser } from "@/hooks/useSocket";
+import type { CodeEditorHandle } from "@/components/editor/CodeEditor";
 
 // Dynamic import Monaco to avoid SSR issues
 const CodeEditor = dynamic(() => import("@/components/editor/CodeEditor"), {
@@ -82,6 +83,9 @@ export default function SessionPage() {
   // Live participants from socket
   const [liveUsers, setLiveUsers] = useState<SocketUser[]>([]);
 
+  // Ref to the CodeEditor imperative handle (for remote code pushes)
+  const editorRef = useRef<CodeEditorHandle | null>(null);
+
   // Flag to suppress emitting code-change when receiving remote updates
   const isRemoteUpdate = useRef(false);
 
@@ -121,26 +125,28 @@ export default function SessionPage() {
     roomId: roomIdStr,
     clerkId: user?.id || "",
     onRoomState: (data) => {
-      // Initial state from server
+      // Initial state from server — push directly to Monaco
       isRemoteUpdate.current = true;
       setCode(data.code);
+      editorRef.current?.setRemoteCode(data.code);
       if (data.codeLanguage) {
         const lang = LANGUAGES.find(l => l.monacoLang === data.codeLanguage || l.id === data.codeLanguage);
         if (lang) setLanguageId(lang.id);
       }
       setLiveUsers(data.users);
-      // Reset the flag after a tick
       setTimeout(() => { isRemoteUpdate.current = false; }, 0);
     },
     onCodeUpdate: (data) => {
-      // Another user changed the code
+      // Another user changed the code — push directly to Monaco (no green flash)
       isRemoteUpdate.current = true;
       setCode(data.code);
+      editorRef.current?.setRemoteCode(data.code);
       setTimeout(() => { isRemoteUpdate.current = false; }, 0);
     },
     onLanguageUpdate: (data) => {
       isRemoteUpdate.current = true;
       setCode(data.code);
+      editorRef.current?.setRemoteCode(data.code);
       const lang = LANGUAGES.find(l => l.monacoLang === data.codeLanguage || l.id === data.codeLanguage);
       if (lang) setLanguageId(lang.id);
       setTimeout(() => { isRemoteUpdate.current = false; }, 0);
@@ -372,6 +378,7 @@ export default function SessionPage() {
         {/* Left: Code Editor */}
         <div className="h-[55%] md:h-auto md:flex-1 min-w-0 overflow-hidden border-b md:border-b-0 border-(--border-color)">
           <CodeEditor
+            ref={editorRef}
             language={currentLang.monacoLang}
             value={code}
             onChange={handleCodeChange}
