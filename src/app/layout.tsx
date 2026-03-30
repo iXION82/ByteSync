@@ -3,7 +3,6 @@ import { ClerkProvider } from "@clerk/nextjs";
 import { VT323, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 import Navbar from "@/components/Navbar";
-import CustomCursor from "@/components/CustomCursor";
 
 const vt323 = VT323({
   variable: "--font-vt323",
@@ -34,7 +33,6 @@ export default function RootLayout({
         className={`${vt323.variable} ${ibmPlexMono.variable}`}
       >
         <ClerkProvider>
-          <CustomCursor />
           <Navbar />
           {children}
         </ClerkProvider>

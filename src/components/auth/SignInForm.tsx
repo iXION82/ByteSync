@@ -14,6 +14,10 @@ export default function SignInForm() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
+  // 2FA state
+  const [needs2FA, setNeeds2FA] = useState(false);
+  const [code2FA, setCode2FA] = useState("");
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -35,8 +39,11 @@ export default function SignInForm() {
       if (signIn.status === "complete") {
         await signIn.finalize();
         router.push("/dashboard");
+      } else if (signIn.status === "needs_second_factor") {
+        setNeeds2FA(true);
       } else {
-        console.log("More steps required:", signIn.status);
+        console.log("Unhandled sign-in status:", signIn.status);
+        setError("Additional verification required.");
       }
     } catch (err: unknown) {
       const clerkError = err as { errors?: { message: string }[] };
@@ -48,6 +55,117 @@ export default function SignInForm() {
     }
   };
 
+  const handle2FASubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    setLoading(true);
+    setError("");
+
+    try {
+      const result = await signIn.attemptSecondFactor({
+        strategy: "totp",
+        code: code2FA,
+      });
+
+      if (result.status === "complete") {
+        await signIn.finalize();
+        router.push("/dashboard");
+      } else {
+        setError("Verification failed. Please try again.");
+      }
+    } catch (err: unknown) {
+      const clerkError = err as { errors?: { message: string; longMessage?: string }[] };
+      setError(
+        clerkError.errors?.[0]?.longMessage ||
+        clerkError.errors?.[0]?.message ||
+        "Invalid verification code"
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ─── 2FA Verification Screen ─────────────────────────────────
+  if (needs2FA) {
+    return (
+      <div className="relative w-full max-w-[440px] animate-[fadeInUp_0.5s_ease] overflow-hidden">
+        <div className="absolute top-0 left-0 w-full h-full pointer-events-none z-[1] [background:repeating-linear-gradient(0deg,var(--scanline-color)_0px,var(--scanline-color)_1px,transparent_1px,transparent_3px)] opacity-50 rounded-[var(--radius-lg)]" aria-hidden="true" />
+
+        <div className="absolute rounded-full blur-[80px] pointer-events-none animate-[float_8s_infinite_ease-in-out] w-[200px] h-[200px] bg-[var(--accent-glow-strong)] -top-[40px] -left-[60px]" />
+        <div className="absolute rounded-full blur-[80px] pointer-events-none animate-[float_8s_infinite_ease-in-out] w-[160px] h-[160px] bg-[var(--accent-glow)] -bottom-[30px] -right-[50px] [animation-delay:-4s]" />
+
+        <div className="relative z-[2] bg-[var(--bg-secondary)] backdrop-blur-[30px] [-webkit-backdrop-filter:blur(30px)] border border-[var(--border-color)] rounded-[var(--radius-lg)] p-10 shadow-[var(--shadow-glow)]">
+          <div className="text-center mb-8">
+            <div className="w-[52px] h-[52px] rounded-[10px] bg-[var(--bg-card)] border border-[var(--border-color)] flex items-center justify-center text-[var(--accent)] mx-auto mb-4 shadow-[0_0_16px_var(--accent-glow)]">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                <circle cx="12" cy="16" r="1" />
+              </svg>
+            </div>
+            <h1 className="font-mono text-[2rem] font-normal tracking-[0.02em] text-[var(--accent)] animate-[text-glow_3s_infinite_ease-in-out]">{">"} 2FA_VERIFY_</h1>
+            <p className="text-[0.9rem] text-[var(--text-muted)] mt-[0.4rem]">Enter the code from your authenticator app</p>
+          </div>
+
+          {error && (
+            <div className="flex items-center gap-2 bg-[var(--error-bg)] border border-[var(--error-border)] text-[var(--error-text)] px-4 py-[0.65rem] rounded-[var(--radius)] text-[0.85rem] mb-6 animate-[fadeIn_0.2s_ease]">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="12" cy="12" r="10" />
+                <line x1="15" y1="9" x2="9" y2="15" />
+                <line x1="9" y1="9" x2="15" y2="15" />
+              </svg>
+              ERROR: {error}
+            </div>
+          )}
+
+          <form onSubmit={handle2FASubmit} className="flex flex-col gap-5">
+            <div className="flex flex-col gap-[0.35rem]">
+              <label htmlFor="signin-2fa-code" className="font-sans text-[0.75rem] font-semibold text-[var(--accent-dim)] uppercase tracking-[0.08em]">VERIFICATION_CODE</label>
+              <div className="relative flex items-center group/input">
+                <svg className="absolute left-[14px] text-[var(--text-muted)] pointer-events-none transition-colors duration-200 group-focus-within/input:text-[var(--accent)]" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                </svg>
+                <input
+                  id="signin-2fa-code"
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={6}
+                  placeholder="000000"
+                  className="w-full py-3 pr-[0.9rem] pl-[2.8rem] bg-[var(--bg-card)] border border-[var(--border-color)] rounded-[var(--radius)] text-[var(--accent)] text-center text-[1.5rem] font-mono font-bold tracking-[0.4em] outline-none transition-all duration-200 placeholder:text-[var(--text-muted)] placeholder:opacity-30 placeholder:tracking-[0.4em] focus:border-[var(--accent)] focus:ring-[3px] focus:ring-[var(--accent-glow)] focus:bg-[var(--bg-card-hover)]"
+                  onChange={(e) => setCode2FA(e.target.value.replace(/\D/g, ""))}
+                  value={code2FA}
+                  autoFocus
+                  required
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading || code2FA.length < 6}
+              className="w-full p-[0.85rem] [background:var(--btn-primary-bg)] text-[var(--btn-primary-text)] border-none rounded-[var(--radius)] font-mono text-[1.3rem] font-normal cursor-pointer transition-all duration-200 flex items-center justify-center gap-2 shadow-[0_0_16px_var(--accent-glow)] mt-2 tracking-[0.03em] disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {loading ? (
+                <span className="inline-block w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-[spin_0.6s_linear_infinite]" />
+              ) : (
+                ">> VERIFY"
+              )}
+            </button>
+          </form>
+
+          <button
+            onClick={() => { setNeeds2FA(false); setCode2FA(""); setError(""); }}
+            className="w-full text-center mt-4 text-[0.85rem] text-[var(--text-muted)] bg-transparent border-none cursor-pointer font-inherit transition-colors duration-200"
+          >
+            ← Back to sign in
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ─── Normal Sign-In Screen ───────────────────────────────────
   return (
     <div className="relative w-full max-w-[440px] animate-[fadeInUp_0.5s_ease] overflow-hidden">
       {/* CRT scanline overlay for auth card */}
@@ -124,7 +242,7 @@ export default function SignInForm() {
           <button
             type="submit"
             disabled={loading || fetchStatus === "fetching"}
-            className="w-full p-[0.85rem] [background:var(--btn-primary-bg)] text-[var(--btn-primary-text)] border-none rounded-[var(--radius)] font-mono text-[1.3rem] font-normal cursor-pointer transition-all duration-200 flex items-center justify-center gap-2 shadow-[0_0_16px_var(--accent-glow)] mt-2 tracking-[0.03em] hover:not(:disabled):-translate-y-[1px] hover:not(:disabled):shadow-[0_0_28px_var(--accent-glow-strong)] active:not(:disabled):translate-y-0 disabled:opacity-60 disabled:cursor-not-allowed"
+            className="w-full p-[0.85rem] [background:var(--btn-primary-bg)] text-[var(--btn-primary-text)] border-none rounded-[var(--radius)] font-mono text-[1.3rem] font-normal cursor-pointer transition-all duration-200 flex items-center justify-center gap-2 shadow-[0_0_16px_var(--accent-glow)] mt-2 tracking-[0.03em] disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {loading ? (
               <span className="inline-block w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-[spin_0.6s_linear_infinite]" />
