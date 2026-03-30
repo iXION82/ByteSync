@@ -479,11 +479,6 @@ export default function SessionPage() {
                 <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
               </svg>
               CHAT
-              {chatMessages.length > 0 && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-(--accent-glow) text-(--accent) font-mono">
-                  {chatMessages.length}
-                </span>
-              )}
             </h3>
             <div className="flex-1 border border-(--border-color) rounded-md flex flex-col text-(--text-muted) text-sm bg-background overflow-hidden">
               <div ref={chatContainerRef} className="flex-1 flex flex-col gap-1 overflow-y-auto p-3 scroll-smooth">
@@ -500,10 +495,14 @@ export default function SessionPage() {
                     return (
                       <div
                         key={msg._id}
-                        className="flex flex-col gap-0.5 py-1.5 px-2 rounded-md hover:bg-(--bg-card) transition-colors duration-150"
+                        className={`flex flex-col gap-0.5 py-1.5 px-3 rounded-xl transition-colors duration-150 mb-1 max-w-[85%] ${
+                          isMe
+                            ? "self-end items-end bg-(--bg-card) border border-(--accent)/50 text-foreground rounded-br-none shadow-[0_2px_8px_var(--accent-glow)]"
+                            : "self-start items-start bg-(--bg-secondary) border border-(--border-color) rounded-bl-none"
+                        }`}
                         style={{ animation: "fadeIn 0.2s ease" }}
                       >
-                        <div className="flex items-center gap-2">
+                        <div className={`flex items-center gap-2 flex-wrap ${isMe ? "flex-row-reverse" : ""}`}>
                           <span
                             className="text-[11px] font-bold font-mono"
                             style={{ color: isMe ? "var(--accent)" : color.text }}
@@ -512,7 +511,7 @@ export default function SessionPage() {
                           </span>
                           <span className="text-[9px] text-(--text-muted) opacity-60 font-mono">{time}</span>
                         </div>
-                        <p className="text-[12px] text-foreground leading-relaxed break-words m-0">
+                        <p className={`text-[12px] leading-relaxed break-words m-0 ${isMe ? "text-right" : "text-left"}`}>
                           {msg.message}
                         </p>
                       </div>
