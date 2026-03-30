@@ -60,6 +60,10 @@
   --cursor-6: #a78bfa;   /* Purple */
   --cursor-7: #2dd4bf;   /* Teal */
   --cursor-8: #f472b6;   /* Rose */
+
+  /* Custom cursor variables */
+  --cursor-ring-color: rgba(0, 212, 255, 0.35);
+  --cursor-ring-glow: rgba(0, 212, 255, 0.12);
 }
 
 /* ─── Light Theme (Warm Retro Cream) ─────────────────────────── */
@@ -108,6 +112,10 @@
   --cursor-6: #6d48c4;
   --cursor-7: #1a9a8a;
   --cursor-8: #c04080;
+
+  /* Custom cursor variables */
+  --cursor-ring-color: rgba(0, 119, 170, 0.35);
+  --cursor-ring-glow: rgba(0, 119, 170, 0.12);
 }
 
 @theme inline {

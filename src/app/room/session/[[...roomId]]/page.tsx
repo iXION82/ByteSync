@@ -121,7 +121,7 @@ export default function SessionPage() {
   }, [roomIdStr]);
 
   // ─── Socket integration ────────────────────────────────────
-  const { emitCodeChange, emitLanguageChange, emitSave } = useSocket({
+  const { emitCodeChange, emitLanguageChange, emitSave, emitCursorMove } = useSocket({
     roomId: roomIdStr,
     clerkId: user?.id || "",
     onRoomState: (data) => {
@@ -156,9 +156,28 @@ export default function SessionPage() {
     },
     onUserLeft: (data) => {
       setLiveUsers(data.users);
+      editorRef.current?.removeRemoteCursor(data.userId);
     },
     onCodeSaved: (data) => {
       setLastSaved(new Date(data.timestamp).toLocaleTimeString());
+    },
+    onCursorUpdate: (data) => {
+      // Find the user's name and index for cursor styling
+      const userIndex = liveUsers.findIndex(u => u.userId === data.userId);
+      let username = "Anonymous";
+      
+      if (userIndex !== -1) {
+        username = liveUsers[userIndex].username;
+      } else {
+        // Fallback to room details
+        const detailsUser = roomDetails?.participants.find(p => p.userId === data.userId);
+        if (detailsUser) username = detailsUser.name;
+      }
+      
+      // Use index for color, default to 0 if not found
+      const colorIndex = userIndex !== -1 ? userIndex : 0;
+      
+      editorRef.current?.updateRemoteCursor(data.userId, username, data.line, data.column, colorIndex);
     },
   });
 
@@ -383,6 +402,7 @@ export default function SessionPage() {
             language={currentLang.monacoLang}
             initialValue={code}
             onChange={handleCodeChange}
+            onCursorChange={emitCursorMove}
           />
         </div>
 

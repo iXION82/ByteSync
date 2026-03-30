@@ -8,27 +8,45 @@ interface CodeEditorProps {
   language: string;
   initialValue?: string;
   onChange: (value: string) => void;
+  /** Called when the local cursor moves */
+  onCursorChange?: (line: number, column: number) => void;
 }
 
+// Cursor colors for remote participants
+const CURSOR_COLORS = [
+  "#818cf8", // indigo
+  "#34d399", // emerald
+  "#fbbf24", // amber
+  "#f472b6", // pink
+  "#a78bfa", // violet
+  "#38bdf8", // sky
+  "#fb923c", // orange
+];
+
 export interface CodeEditorHandle {
-  /** Push code from a remote user without triggering the green diff flash */
   setRemoteCode: (code: string) => void;
-  /** Set code programmatically (e.g. language switch) — also no flash */
   setCode: (code: string) => void;
-  /** Get the current code */
   getCode: () => string;
+  /** Show/update a remote user's cursor */
+  updateRemoteCursor: (userId: string, username: string, line: number, column: number, colorIndex: number) => void;
+  /** Remove a remote user's cursor */
+  removeRemoteCursor: (userId: string) => void;
 }
 
 const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
-  function CodeEditor({ language, initialValue = "", onChange }, ref) {
+  function CodeEditor({ language, initialValue = "", onChange, onCursorChange }, ref) {
     const [theme, setTheme] = useState<"bytesync-dark" | "bytesync-light">("bytesync-dark");
     const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
+    const monacoRef = useRef<typeof Monaco | null>(null);
     const isInternalEdit = useRef(false);
 
+    // Track decoration IDs per remote user
+    const cursorDecorationsRef = useRef<Map<string, string[]>>(new Map());
+    // Track injected CSS style elements per user
+    const cursorStylesRef = useRef<Map<string, HTMLStyleElement>>(new Map());
+
     /**
-     * Compute the minimal edit between oldText and newText,
-     * then apply only the changed range via executeEdits.
-     * This avoids re-tokenizing the entire document (no green flash).
+     * Compute minimal diff and apply only changed range
      */
     const applyMinimalEdit = useCallback(
       (newCode: string, source: string) => {
@@ -40,13 +58,11 @@ const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
         const oldCode = model.getValue();
         if (oldCode === newCode) return;
 
-        // Find the first character that differs
         let start = 0;
         while (start < oldCode.length && start < newCode.length && oldCode[start] === newCode[start]) {
           start++;
         }
 
-        // Find the last character that differs (from the end)
         let oldEnd = oldCode.length;
         let newEnd = newCode.length;
         while (oldEnd > start && newEnd > start && oldCode[oldEnd - 1] === newCode[newEnd - 1]) {
@@ -54,7 +70,6 @@ const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
           newEnd--;
         }
 
-        // Convert character offsets to Monaco positions
         const startPos = model.getPositionAt(start);
         const endPos = model.getPositionAt(oldEnd);
         const insertText = newCode.substring(start, newEnd);
@@ -77,12 +92,136 @@ const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
       []
     );
 
+    /**
+     * Inject CSS for a cursor color (once per user)
+     */
+    const ensureCursorCSS = useCallback((userId: string, color: string) => {
+      if (cursorStylesRef.current.has(userId)) return;
+
+      const safeId = userId.replace(/[^a-zA-Z0-9]/g, "_");
+      const style = document.createElement("style");
+      style.textContent = `
+        .remote-cursor-${safeId} {
+          border-left: 2px solid ${color};
+          margin-left: -1px;
+          position: relative;
+          z-index: 10;
+        }
+        .remote-cursor-label-${safeId} {
+          position: relative;
+        }
+        .remote-cursor-label-${safeId}::after {
+          content: attr(data-username);
+          position: absolute;
+          top: -18px;
+          left: -1px;
+          background: ${color};
+          color: #000;
+          font-size: 10px;
+          font-weight: 700;
+          font-family: 'IBM Plex Mono', monospace;
+          padding: 1px 5px;
+          border-radius: 3px 3px 3px 0;
+          white-space: nowrap;
+          pointer-events: none;
+          z-index: 100;
+          line-height: 14px;
+        }
+        .remote-cursor-line-${safeId} {
+          background: ${color}08;
+          border-right: none;
+        }
+      `;
+      document.head.appendChild(style);
+      cursorStylesRef.current.set(userId, style);
+    }, []);
+
+    /**
+     * Update or create a remote cursor decoration
+     */
+    const updateRemoteCursor = useCallback(
+      (userId: string, username: string, line: number, column: number, colorIndex: number) => {
+        const editor = editorRef.current;
+        if (!editor) return;
+
+        const color = CURSOR_COLORS[colorIndex % CURSOR_COLORS.length];
+        const safeId = userId.replace(/[^a-zA-Z0-9]/g, "_");
+
+        // Ensure CSS exists for this cursor color
+        ensureCursorCSS(userId, color);
+
+        // Build decorations
+        const newDecorations: Monaco.editor.IModelDeltaDecoration[] = [
+          {
+            range: {
+              startLineNumber: line,
+              startColumn: column,
+              endLineNumber: line,
+              endColumn: column,
+            },
+            options: {
+              className: `remote-cursor-${safeId}`,
+              beforeContentClassName: `remote-cursor-label-${safeId}`,
+              stickiness: 1, // NeverGrowsWhenTypingAtEdges
+              hoverMessage: { value: username },
+            },
+          },
+          {
+            range: {
+              startLineNumber: line,
+              startColumn: 1,
+              endLineNumber: line,
+              endColumn: 1,
+            },
+            options: {
+              isWholeLine: true,
+              className: `remote-cursor-line-${safeId}`,
+              stickiness: 1,
+            },
+          },
+        ];
+
+        // Replace previous decorations
+        const oldIds = cursorDecorationsRef.current.get(userId) || [];
+        const newIds = editor.deltaDecorations(oldIds, newDecorations);
+        cursorDecorationsRef.current.set(userId, newIds);
+
+        // Set the username data attribute on the label element (for ::after content)
+        requestAnimationFrame(() => {
+          const els = document.querySelectorAll(`.remote-cursor-label-${safeId}`);
+          els.forEach((el) => el.setAttribute("data-username", username));
+        });
+      },
+      [ensureCursorCSS]
+    );
+
+    /**
+     * Remove a remote cursor
+     */
+    const removeRemoteCursor = useCallback((userId: string) => {
+      const editor = editorRef.current;
+      if (!editor) return;
+
+      const oldIds = cursorDecorationsRef.current.get(userId) || [];
+      editor.deltaDecorations(oldIds, []);
+      cursorDecorationsRef.current.delete(userId);
+
+      // Remove injected CSS
+      const style = cursorStylesRef.current.get(userId);
+      if (style) {
+        style.remove();
+        cursorStylesRef.current.delete(userId);
+      }
+    }, []);
+
     // Expose imperative handle
     useImperativeHandle(ref, () => ({
       setRemoteCode: (code: string) => applyMinimalEdit(code, "remote-sync"),
       setCode: (code: string) => applyMinimalEdit(code, "programmatic"),
       getCode: () => editorRef.current?.getModel()?.getValue() || "",
-    }), [applyMinimalEdit]);
+      updateRemoteCursor,
+      removeRemoteCursor,
+    }), [applyMinimalEdit, updateRemoteCursor, removeRemoteCursor]);
 
     useEffect(() => {
       const updateTheme = () => {
@@ -191,6 +330,14 @@ const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
       monaco.editor.setTheme(current === "light" ? "bytesync-light" : "bytesync-dark");
 
       editor.focus();
+
+      // Listen for cursor position changes
+      editor.onDidChangeCursorPosition((e) => {
+        // Only emit if it's a real user action, not an internal programmatic edit
+        if (!isInternalEdit.current && onCursorChange) {
+          onCursorChange(e.position.lineNumber, e.position.column);
+        }
+      });
     };
 
     const handleChange = useCallback(
