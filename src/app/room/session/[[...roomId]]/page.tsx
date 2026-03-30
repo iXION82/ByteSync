@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import dynamic from "next/dynamic";
 import { useParams, useRouter } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
+import { motion, AnimatePresence } from "framer-motion";
 import CodeRunner from "@/components/editor/CodeRunner";
 import { LANGUAGES, DEFAULT_LANGUAGE_ID, getLanguageById } from "@/lib/editorConstants";
 import { useSocket, type SocketUser } from "@/hooks/useSocket";
@@ -81,6 +82,7 @@ export default function SessionPage() {
   const [executionTime, setExecutionTime] = useState<number | null>(null);
   const [copied, setCopied] = useState(false);
   const [lastSaved, setLastSaved] = useState<string | null>(null);
+  const [justSaved, setJustSaved] = useState(false);
 
   // Live participants from socket
   const [liveUsers, setLiveUsers] = useState<SocketUser[]>([]);
@@ -96,6 +98,13 @@ export default function SessionPage() {
   const [chatInput, setChatInput] = useState("");
   const chatEndRef = useRef<HTMLDivElement | null>(null);
   const chatContainerRef = useRef<HTMLDivElement | null>(null);
+
+  // Derived DB user ID for the current Clerk user
+  const myDbUserId = useMemo(() => {
+    if (!user || !roomDetails) return null;
+    if (roomDetails.owner?.clerkId === user.id) return roomDetails.owner.userId;
+    return roomDetails.participants.find((p) => p.clerkId === user.id)?.userId || null;
+  }, [user, roomDetails]);
 
   // Ref to the CodeEditor imperative handle (for remote code pushes)
   const editorRef = useRef<CodeEditorHandle | null>(null);
@@ -335,6 +344,12 @@ export default function SessionPage() {
     }
   }, [code, currentLang]);
 
+  const handleSaveCode = useCallback(() => {
+    emitSave();
+    setJustSaved(true);
+    setTimeout(() => setJustSaved(false), 2000);
+  }, [emitSave]);
+
   const handleClearOutput = useCallback(() => {
     setOutput("");
     setError("");
@@ -417,19 +432,29 @@ export default function SessionPage() {
         <div className="flex items-center gap-2">
           {/* Save button */}
           <button
-            className="flex items-center gap-[0.35rem] font-mono text-[1.05rem] font-normal py-[0.3rem] px-[0.9rem] rounded-md cursor-pointer transition-all duration-200 border border-(--border-color) whitespace-nowrap tracking-[0.02em] bg-transparent text-(--text-muted) hover:border-(--border-hover) hover:bg-(--bg-card)"
-            onClick={() => emitSave()}
+            className={`flex items-center gap-[0.35rem] font-mono text-[1.05rem] font-normal py-[0.3rem] px-[0.9rem] rounded-md cursor-pointer transition-all duration-200 border whitespace-nowrap tracking-[0.02em] active:scale-[0.97] ${
+              justSaved 
+                ? "border-green-500/50 text-green-400 bg-green-500/10 shadow-[0_0_12px_rgba(34,197,94,0.2)]" 
+                : "border-(--border-color) text-(--text-muted) bg-transparent hover:border-(--border-hover) hover:bg-(--bg-card)"
+            }`}
+            onClick={handleSaveCode}
             title="Save code to database"
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
-              <polyline points="17 21 17 13 7 13 7 21" />
-              <polyline points="7 3 7 8 15 8" />
-            </svg>
-            SAVE
+            {justSaved ? (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+            ) : (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                <polyline points="17 21 17 13 7 13 7 21" />
+                <polyline points="7 3 7 8 15 8" />
+              </svg>
+            )}
+            {justSaved ? "SAVED" : "SAVE"}
           </button>
           <button
-            className="flex items-center gap-[0.35rem] font-mono text-[1.05rem] font-normal py-[0.3rem] px-[0.9rem] rounded-md cursor-pointer transition-all duration-200 border border-(--border-color) whitespace-nowrap tracking-[0.02em] disabled:opacity-50 disabled:cursor-not-allowed bg-transparent text-(--text-muted) hover:border-(--border-hover) hover:bg-(--bg-card)"
+            className="flex items-center gap-[0.35rem] font-mono text-[1.05rem] font-normal py-[0.3rem] px-[0.9rem] rounded-md cursor-pointer transition-all duration-200 border border-(--border-color) whitespace-nowrap tracking-[0.02em] disabled:opacity-50 disabled:cursor-not-allowed bg-transparent text-(--text-muted) active:scale-[0.97] hover:border-(--border-hover) hover:bg-(--bg-card)"
             onClick={handleClearOutput}
             disabled={isRunning}
           >
@@ -440,7 +465,7 @@ export default function SessionPage() {
             CLEAR
           </button>
           <button
-            className="flex items-center gap-[0.35rem] font-mono text-[1.05rem] font-normal py-[0.3rem] px-[0.9rem] rounded-md cursor-pointer transition-all duration-200 border border-transparent whitespace-nowrap tracking-[0.02em] disabled:opacity-50 disabled:cursor-not-allowed text-(--btn-primary-text) hover:-translate-y-px"
+            className="flex items-center gap-[0.35rem] font-mono text-[1.05rem] font-normal py-[0.3rem] px-[0.9rem] rounded-md cursor-pointer transition-all duration-200 border border-transparent whitespace-nowrap tracking-[0.02em] disabled:opacity-50 disabled:cursor-not-allowed text-(--btn-primary-text) active:scale-[0.97] hover:-translate-y-px"
             style={{ background: "var(--btn-primary-bg)", boxShadow: "0 0 12px var(--accent-glow)" }}
             onClick={handleRunCode}
             disabled={isRunning}
@@ -493,33 +518,32 @@ export default function SessionPage() {
               CHAT
             </h3>
             <div className="flex-1 border border-(--border-color) rounded-md flex flex-col text-(--text-muted) text-sm bg-background overflow-hidden">
-              <div ref={chatContainerRef} className="flex-1 flex flex-col gap-1 overflow-y-auto p-3 scroll-smooth">
+              <div ref={chatContainerRef} className="flex-1 flex flex-col gap-1 overflow-y-auto overflow-x-hidden p-3 scroll-smooth">
                 {chatMessages.length === 0 ? (
                   <div className="flex-1 flex items-center justify-center text-xs text-(--text-muted) opacity-50">
                     No messages yet — start the conversation!
                   </div>
                 ) : (
-                  chatMessages.map((msg) => {
-                    // Match message senderId with my DB userId by looking up my clerkId in participants/owner
-                    const myDbUserId =
-                      roomDetails?.owner?.clerkId === user?.id
-                        ? roomDetails?.owner?.userId
-                        : roomDetails?.participants.find((p) => p.clerkId === user?.id)?.userId;
-                    const isMe = Boolean(myDbUserId && msg.senderId === myDbUserId);
-                    
-                    const senderName = getSenderName(msg.senderId);
-                    const color = getSenderColor(msg.senderId);
-                    const time = new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-                    return (
-                      <div
-                        key={msg._id}
-                        className={`flex flex-col gap-0.5 py-1.5 px-3 rounded-xl transition-colors duration-150 mb-1 max-w-[85%] ${
-                          isMe
-                            ? "self-end items-end bg-(--bg-card) border border-(--accent)/50 text-foreground rounded-br-none shadow-[0_2px_8px_var(--accent-glow)]"
-                            : "self-start items-start bg-(--bg-secondary) border border-(--border-color) rounded-bl-none"
-                        }`}
-                        style={{ animation: "fadeIn 0.2s ease" }}
-                      >
+                  <AnimatePresence initial={false}>
+                    {chatMessages.map((msg) => {
+                      const isMe = Boolean(myDbUserId && msg.senderId === myDbUserId);
+                      
+                      const senderName = getSenderName(msg.senderId);
+                      const color = getSenderColor(msg.senderId);
+                      const time = new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+                      return (
+                        <motion.div
+                          layout
+                          initial={{ opacity: 0, y: 15, scale: 0.95 }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          transition={{ type: "spring", stiffness: 350, damping: 25 }}
+                          key={msg._id}
+                          className={`flex flex-col gap-0.5 py-1.5 px-3 rounded-xl transition-colors duration-150 mb-1 max-w-[85%] ${
+                            isMe
+                              ? "self-end items-end bg-(--bg-card) border border-(--accent)/50 text-foreground rounded-br-none shadow-[0_2px_8px_var(--accent-glow)]"
+                              : "self-start items-start bg-(--bg-secondary) border border-(--border-color) rounded-bl-none"
+                          }`}
+                        >
                         <div className={`flex items-center gap-2 flex-wrap ${isMe ? "flex-row-reverse" : ""}`}>
                           <span
                             className="text-[11px] font-bold font-mono"
@@ -529,12 +553,13 @@ export default function SessionPage() {
                           </span>
                           <span className="text-[9px] text-(--text-muted) opacity-60 font-mono">{time}</span>
                         </div>
-                        <p className={`text-[12px] leading-relaxed break-words m-0 ${isMe ? "text-right" : "text-left"}`}>
-                          {msg.message}
-                        </p>
-                      </div>
-                    );
-                  })
+                          <p className={`text-[12px] leading-relaxed break-words m-0 ${isMe ? "text-right" : "text-left"}`}>
+                            {msg.message}
+                          </p>
+                        </motion.div>
+                      );
+                    })}
+                  </AnimatePresence>
                 )}
                 <div ref={chatEndRef} />
               </div>
@@ -549,7 +574,7 @@ export default function SessionPage() {
                   maxLength={500}
                 />
                 <button
-                  className="bg-(--accent) text-background px-3 rounded font-medium text-xs shadow-[0_0_8px_var(--accent-glow)] cursor-pointer transition-all duration-200 hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="bg-(--accent) text-background px-3 rounded font-medium text-xs shadow-[0_0_8px_var(--accent-glow)] cursor-pointer transition-all duration-200 active:scale-[0.95] hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
                   onClick={handleSendMessage}
                   disabled={!chatInput.trim()}
                 >
@@ -595,37 +620,47 @@ export default function SessionPage() {
               LIVE ({liveUsers.length})
             </span>
             <div className="flex items-center gap-4">
-              {liveUsers.map((u, i) => {
-                const color = PARTICIPANT_COLORS[i % PARTICIPANT_COLORS.length];
-                const isMe = user && u.userId === user.id;
-                return (
-                  <div key={u.socketId} className="flex items-center gap-2">
-                    <div className="relative">
-                      <div
-                        className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold"
-                        style={{
-                          background: isMe ? "rgba(var(--accent-rgb, 0,255,136), 0.2)" : color.bg,
-                          border: `1px solid ${isMe ? "var(--accent)" : color.border}`,
-                          color: isMe ? "var(--accent)" : color.text,
-                        }}
-                      >
-                        {getInitials(u.username)}
+              <AnimatePresence>
+                {liveUsers.map((u, i) => {
+                  const color = PARTICIPANT_COLORS[i % PARTICIPANT_COLORS.length];
+                  const isMe = Boolean(myDbUserId && u.userId === myDbUserId);
+                  return (
+                    <motion.div
+                      layout
+                      initial={{ opacity: 0, x: -20, scale: 0.8 }}
+                      animate={{ opacity: 1, x: 0, scale: 1 }}
+                      exit={{ opacity: 0, x: 20, scale: 0.8 }}
+                      transition={{ type: "spring", stiffness: 300, damping: 25 }}
+                      key={u.socketId}
+                      className="flex items-center gap-2"
+                    >
+                      <div className="relative">
+                        <div
+                          className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold"
+                          style={{
+                            background: isMe ? "rgba(var(--accent-rgb, 0,255,136), 0.2)" : color.bg,
+                            border: `1px solid ${isMe ? "var(--accent)" : color.border}`,
+                            color: isMe ? "var(--accent)" : color.text,
+                          }}
+                        >
+                          {getInitials(u.username)}
+                        </div>
+                        {/* Online dot */}
+                        <span
+                          className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-(--bg-secondary)"
+                          style={{ background: "#22c55e" }}
+                        />
                       </div>
-                      {/* Online dot */}
-                      <span
-                        className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-(--bg-secondary)"
-                        style={{ background: "#22c55e" }}
-                      />
-                    </div>
-                    <div className="flex flex-col leading-tight">
-                      <span className="text-[13px] font-medium text-foreground">
-                        {isMe ? "You" : u.username}
-                      </span>
-                      <span className="text-[9px] text-(--text-muted) uppercase font-mono">Online</span>
-                    </div>
-                  </div>
-                );
-              })}
+                      <div className="flex flex-col leading-tight">
+                        <span className="text-[13px] font-medium text-foreground">
+                          {isMe ? "You" : u.username}
+                        </span>
+                        <span className="text-[9px] text-(--text-muted) uppercase font-mono">Online</span>
+                      </div>
+                    </motion.div>
+                  );
+                })}
+              </AnimatePresence>
               {liveUsers.length === 0 && (
                 <span className="text-xs text-(--text-muted)">Connecting...</span>
               )}

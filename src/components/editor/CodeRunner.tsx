@@ -1,5 +1,51 @@
 "use client";
 
+import { useState, useRef, useEffect } from "react";
+
+function TypewriterText({ text }: { text: string }) {
+  const [displayed, setDisplayed] = useState("");
+  const isComplete = useRef(false);
+
+  useEffect(() => {
+    setDisplayed("");
+    isComplete.current = false;
+    
+    // Fast path: if text is over 500 chars, skip animation to avoid long waits
+    if (text.length > 500) {
+      setDisplayed(text);
+      isComplete.current = true;
+      return;
+    }
+
+    let i = 0;
+    const interval = setInterval(() => {
+      if (i < text.length) {
+        setDisplayed((prev) => prev + text.charAt(i));
+        i++;
+      } else {
+        clearInterval(interval);
+        isComplete.current = true;
+      }
+    }, 15);
+
+    return () => clearInterval(interval);
+  }, [text]);
+
+  const handleSkip = () => {
+    if (!isComplete.current) {
+      setDisplayed(text);
+      isComplete.current = true;
+    }
+  };
+
+  return (
+    <pre onClick={handleSkip} className="whitespace-pre-wrap break-words m-0 font-inherit text-[var(--text-primary)] cursor-pointer" title="Click to skip animation">
+      {displayed}
+      {!isComplete.current && <span className="opacity-70 text-[var(--accent)]" style={{ animation: "blink 1s step-end infinite" }}>█</span>}
+    </pre>
+  );
+}
+
 interface CodeRunnerProps {
   output: string;
   isRunning: boolean;
@@ -38,7 +84,7 @@ export default function CodeRunner({ output, isRunning, error, executionTime }: 
           </div>
         ) : output ? (
           <div>
-            <pre className="whitespace-pre-wrap break-words m-0 font-inherit text-[var(--text-primary)]">{output}</pre>
+            <TypewriterText text={output} />
           </div>
         ) : (
           <div className="flex items-center gap-[0.4rem] text-[var(--text-muted)]">
