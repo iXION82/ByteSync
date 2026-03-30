@@ -13,6 +13,7 @@ interface UseSocketOptions {
   onUserLeft?: (data: { userId: string; users: SocketUser[] }) => void;
   onCodeSaved?: (data: { timestamp: string }) => void;
   onCursorUpdate?: (data: { userId: string; line: number; column: number }) => void;
+  onNewMessage?: (data: { _id: string; senderId: string; message: string; createdAt: string }) => void;
 }
 
 export interface SocketUser {
@@ -31,16 +32,17 @@ export function useSocket({
   onUserLeft,
   onCodeSaved,
   onCursorUpdate,
+  onNewMessage,
 }: UseSocketOptions) {
   const socketRef = useRef<Socket | null>(null);
 
   const callbacksRef = useRef({
     onRoomState, onCodeUpdate, onLanguageUpdate,
-    onUserJoined, onUserLeft, onCodeSaved, onCursorUpdate,
+    onUserJoined, onUserLeft, onCodeSaved, onCursorUpdate, onNewMessage,
   });
   callbacksRef.current = {
     onRoomState, onCodeUpdate, onLanguageUpdate,
-    onUserJoined, onUserLeft, onCodeSaved, onCursorUpdate,
+    onUserJoined, onUserLeft, onCodeSaved, onCursorUpdate, onNewMessage,
   };
 
   useEffect(() => {
@@ -63,6 +65,7 @@ export function useSocket({
     socket.on("user-left", (data) => callbacksRef.current.onUserLeft?.(data));
     socket.on("code-saved", (data) => callbacksRef.current.onCodeSaved?.(data));
     socket.on("cursor-update", (data) => callbacksRef.current.onCursorUpdate?.(data));
+    socket.on("new-message", (data) => callbacksRef.current.onNewMessage?.(data));
 
     socket.on("error", (data) => console.error("Socket error:", data.message));
     socket.on("disconnect", () => console.log("🔌 Socket disconnected"));
@@ -84,6 +87,10 @@ export function useSocket({
 
   const emitSave = useCallback(() => {
     socketRef.current?.emit("save-code");
+  }, []);
+
+  const emitMessage = useCallback((message: string) => {
+    socketRef.current?.emit("send-message", { message });
   }, []);
 
   const cursorEmitThrottle = useRef<{ timer: ReturnType<typeof setTimeout> | null; pending: { line: number; column: number } | null }>({ timer: null, pending: null });
@@ -112,6 +119,7 @@ export function useSocket({
     emitCodeChange,
     emitLanguageChange,
     emitSave,
+    emitMessage,
     emitCursorMove,
     socket: socketRef,
   };

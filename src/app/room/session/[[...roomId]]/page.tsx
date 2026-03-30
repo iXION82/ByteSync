@@ -83,6 +83,18 @@ export default function SessionPage() {
   // Live participants from socket
   const [liveUsers, setLiveUsers] = useState<SocketUser[]>([]);
 
+  // Chat state
+  interface ChatMessage {
+    _id: string;
+    senderId: string;
+    message: string;
+    createdAt: string;
+  }
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatInput, setChatInput] = useState("");
+  const chatEndRef = useRef<HTMLDivElement | null>(null);
+  const chatContainerRef = useRef<HTMLDivElement | null>(null);
+
   // Ref to the CodeEditor imperative handle (for remote code pushes)
   const editorRef = useRef<CodeEditorHandle | null>(null);
 
@@ -91,7 +103,7 @@ export default function SessionPage() {
 
   const currentLang = getLanguageById(languageId)!;
 
-  // ─── Fetch room details on mount ───────────────────────────
+  // ─── Fetch room details + chat history on mount ────────────
   useEffect(() => {
     if (!roomIdStr) return;
 
@@ -117,15 +129,27 @@ export default function SessionPage() {
       }
     };
 
+    const fetchChatHistory = async () => {
+      try {
+        const res = await fetch(`${SERVER_URL}/api/chats/${roomIdStr}?limit=50`);
+        if (res.ok) {
+          const messages: ChatMessage[] = await res.json();
+          setChatMessages(messages);
+        }
+      } catch (err) {
+        console.error("Failed to fetch chat history:", err);
+      }
+    };
+
     fetchRoom();
+    fetchChatHistory();
   }, [roomIdStr]);
 
   // ─── Socket integration ────────────────────────────────────
-  const { emitCodeChange, emitLanguageChange, emitSave, emitCursorMove } = useSocket({
+  const { emitCodeChange, emitLanguageChange, emitSave, emitMessage, emitCursorMove } = useSocket({
     roomId: roomIdStr,
     clerkId: user?.id || "",
     onRoomState: (data) => {
-      // Initial state from server — push directly to Monaco
       isRemoteUpdate.current = true;
       setCode(data.code);
       editorRef.current?.setRemoteCode(data.code);
@@ -137,7 +161,6 @@ export default function SessionPage() {
       setTimeout(() => { isRemoteUpdate.current = false; }, 0);
     },
     onCodeUpdate: (data) => {
-      // Another user changed the code — push directly to Monaco (no green flash)
       isRemoteUpdate.current = true;
       setCode(data.code);
       editorRef.current?.setRemoteCode(data.code);
@@ -162,24 +185,58 @@ export default function SessionPage() {
       setLastSaved(new Date(data.timestamp).toLocaleTimeString());
     },
     onCursorUpdate: (data) => {
-      // Find the user's name and index for cursor styling
       const userIndex = liveUsers.findIndex(u => u.userId === data.userId);
       let username = "Anonymous";
-      
       if (userIndex !== -1) {
         username = liveUsers[userIndex].username;
       } else {
-        // Fallback to room details
         const detailsUser = roomDetails?.participants.find(p => p.userId === data.userId);
         if (detailsUser) username = detailsUser.name;
       }
-      
-      // Use index for color, default to 0 if not found
       const colorIndex = userIndex !== -1 ? userIndex : 0;
-      
       editorRef.current?.updateRemoteCursor(data.userId, username, data.line, data.column, colorIndex);
     },
+    onNewMessage: (data) => {
+      setChatMessages((prev) => [...prev, data]);
+    },
   });
+
+  // ─── Auto-scroll chat to bottom on new messages ────────────
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatMessages]);
+
+  // ─── Send chat message ─────────────────────────────────────
+  const handleSendMessage = useCallback(() => {
+    const trimmed = chatInput.trim();
+    if (!trimmed) return;
+    emitMessage(trimmed);
+    setChatInput("");
+  }, [chatInput, emitMessage]);
+
+  const handleChatKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage();
+    }
+  }, [handleSendMessage]);
+
+  // ─── Resolve sender name from userId ───────────────────────
+  const getSenderName = useCallback((senderId: string) => {
+    // Check live users first
+    const liveUser = liveUsers.find(u => u.userId === senderId);
+    if (liveUser) return liveUser.username;
+    // Fallback to room details
+    const participant = roomDetails?.participants.find(p => p.userId === senderId);
+    if (participant) return participant.name;
+    if (roomDetails?.owner?.userId === senderId) return roomDetails.owner.name;
+    return "Unknown";
+  }, [liveUsers, roomDetails]);
+
+  const getSenderColor = useCallback((senderId: string) => {
+    const idx = liveUsers.findIndex(u => u.userId === senderId);
+    return PARTICIPANT_COLORS[Math.max(0, idx) % PARTICIPANT_COLORS.length];
+  }, [liveUsers]);
 
   // ─── Code change handler (local edits, debounced emit) ──────
   const debounceTimer = useRef<NodeJS.Timeout | null>(null);
@@ -422,14 +479,65 @@ export default function SessionPage() {
                 <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
               </svg>
               CHAT
+              {chatMessages.length > 0 && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-(--accent-glow) text-(--accent) font-mono">
+                  {chatMessages.length}
+                </span>
+              )}
             </h3>
-            <div className="flex-1 border border-(--border-color) rounded-md flex flex-col justify-end text-(--text-muted) text-sm bg-background p-3">
-              <div className="flex-1 flex flex-col gap-2 overflow-y-auto mb-3 opacity-50">
-                <div className="text-center text-xs py-4">Chat coming soon...</div>
+            <div className="flex-1 border border-(--border-color) rounded-md flex flex-col text-(--text-muted) text-sm bg-background overflow-hidden">
+              <div ref={chatContainerRef} className="flex-1 flex flex-col gap-1 overflow-y-auto p-3 scroll-smooth">
+                {chatMessages.length === 0 ? (
+                  <div className="flex-1 flex items-center justify-center text-xs text-(--text-muted) opacity-50">
+                    No messages yet — start the conversation!
+                  </div>
+                ) : (
+                  chatMessages.map((msg) => {
+                    const isMe = user && msg.senderId === (roomDetails?.participants.find(p => p.userId === user.id)?.userId || roomDetails?.owner?.userId);
+                    const senderName = getSenderName(msg.senderId);
+                    const color = getSenderColor(msg.senderId);
+                    const time = new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+                    return (
+                      <div
+                        key={msg._id}
+                        className="flex flex-col gap-0.5 py-1.5 px-2 rounded-md hover:bg-(--bg-card) transition-colors duration-150"
+                        style={{ animation: "fadeIn 0.2s ease" }}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span
+                            className="text-[11px] font-bold font-mono"
+                            style={{ color: isMe ? "var(--accent)" : color.text }}
+                          >
+                            {isMe ? "You" : senderName}
+                          </span>
+                          <span className="text-[9px] text-(--text-muted) opacity-60 font-mono">{time}</span>
+                        </div>
+                        <p className="text-[12px] text-foreground leading-relaxed break-words m-0">
+                          {msg.message}
+                        </p>
+                      </div>
+                    );
+                  })
+                )}
+                <div ref={chatEndRef} />
               </div>
-              <div className="flex gap-2 mt-auto">
-                <input type="text" placeholder="Chat is disabled currently..." className="flex-1 bg-(--bg-secondary) border border-(--border-color) rounded px-2 py-1.5 text-xs text-foreground outline-none focus:border-(--accent) disabled:opacity-50" disabled />
-                <button className="bg-(--accent) text-background px-3 rounded font-medium text-xs shadow-[0_0_8px_var(--accent-glow)] disabled:opacity-50" disabled>SEND</button>
+              <div className="flex gap-2 p-2 border-t border-(--border-color) bg-(--bg-secondary)">
+                <input
+                  type="text"
+                  placeholder="Type a message..."
+                  className="flex-1 bg-background border border-(--border-color) rounded px-2 py-1.5 text-xs text-foreground outline-none focus:border-(--accent) transition-colors duration-200"
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  onKeyDown={handleChatKeyDown}
+                  maxLength={500}
+                />
+                <button
+                  className="bg-(--accent) text-background px-3 rounded font-medium text-xs shadow-[0_0_8px_var(--accent-glow)] cursor-pointer transition-all duration-200 hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                  onClick={handleSendMessage}
+                  disabled={!chatInput.trim()}
+                >
+                  SEND
+                </button>
               </div>
             </div>
           </div>
