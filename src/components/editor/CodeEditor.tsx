@@ -44,6 +44,8 @@ const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
     const cursorDecorationsRef = useRef<Map<string, string[]>>(new Map());
     // Track injected CSS style elements per user
     const cursorStylesRef = useRef<Map<string, HTMLStyleElement>>(new Map());
+    // Throttle cursor updates per user (avoid jittery rapid-fire re-renders)
+    const cursorThrottleRef = useRef<Map<string, { timer: ReturnType<typeof setTimeout> | null; pending: { line: number; column: number } | null }>>(new Map());
 
     /**
      * Compute minimal diff and apply only changed range
@@ -101,11 +103,26 @@ const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
       const safeId = userId.replace(/[^a-zA-Z0-9]/g, "_");
       const style = document.createElement("style");
       style.textContent = `
+        @keyframes remoteCursorPulse-${safeId} {
+          0%, 100% { opacity: 1; box-shadow: 0 0 4px ${color}60; }
+          50% { opacity: 0.6; box-shadow: 0 0 8px ${color}40; }
+        }
+        @keyframes remoteCursorFadeIn-${safeId} {
+          from { opacity: 0; transform: scaleY(0.3); }
+          to { opacity: 1; transform: scaleY(1); }
+        }
+        @keyframes remoteLabelSlide-${safeId} {
+          from { opacity: 0; transform: translateY(4px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
         .remote-cursor-${safeId} {
           border-left: 2px solid ${color};
           margin-left: -1px;
           position: relative;
           z-index: 10;
+          animation: remoteCursorPulse-${safeId} 1.2s ease-in-out infinite,
+                     remoteCursorFadeIn-${safeId} 0.15s ease-out;
+          transform-origin: bottom;
         }
         .remote-cursor-label-${safeId} {
           position: relative;
@@ -126,10 +143,14 @@ const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
           pointer-events: none;
           z-index: 100;
           line-height: 14px;
+          animation: remoteLabelSlide-${safeId} 0.2s ease-out;
+          box-shadow: 0 1px 4px ${color}30;
         }
         .remote-cursor-line-${safeId} {
           background: ${color}08;
           border-right: none;
+          transition: opacity 0.2s ease;
+          animation: remoteCursorFadeIn-${safeId} 0.2s ease-out;
         }
       `;
       document.head.appendChild(style);
@@ -139,7 +160,10 @@ const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
     /**
      * Update or create a remote cursor decoration
      */
-    const updateRemoteCursor = useCallback(
+    /**
+     * Internal: apply the decoration for a remote cursor at a given position
+     */
+    const applyRemoteCursor = useCallback(
       (userId: string, username: string, line: number, column: number, colorIndex: number) => {
         const editor = editorRef.current;
         if (!editor) return;
@@ -193,6 +217,41 @@ const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
         });
       },
       [ensureCursorCSS]
+    );
+
+    /**
+     * Throttled cursor update — coalesces rapid-fire cursor events into
+     * smooth ~60ms intervals per user, preventing jittery decoration flicker.
+     */
+    const updateRemoteCursor = useCallback(
+      (userId: string, username: string, line: number, column: number, colorIndex: number) => {
+        let state = cursorThrottleRef.current.get(userId);
+        if (!state) {
+          state = { timer: null, pending: null };
+          cursorThrottleRef.current.set(userId, state);
+        }
+
+        // Store the latest position
+        state.pending = { line, column };
+
+        // If a timer is already running, the pending update will be applied when it fires
+        if (state.timer) return;
+
+        // Apply immediately (first event in the batch)
+        applyRemoteCursor(userId, username, line, column, colorIndex);
+        state.pending = null;
+
+        // Start throttle window
+        state.timer = setTimeout(() => {
+          // Apply the most recent pending position if any arrived during the window
+          if (state!.pending) {
+            applyRemoteCursor(userId, username, state!.pending.line, state!.pending.column, colorIndex);
+            state!.pending = null;
+          }
+          state!.timer = null;
+        }, 60);
+      },
+      [applyRemoteCursor]
     );
 
     /**

@@ -86,8 +86,26 @@ export function useSocket({
     socketRef.current?.emit("save-code");
   }, []);
 
+  const cursorEmitThrottle = useRef<{ timer: ReturnType<typeof setTimeout> | null; pending: { line: number; column: number } | null }>({ timer: null, pending: null });
+
   const emitCursorMove = useCallback((line: number, column: number) => {
+    const state = cursorEmitThrottle.current;
+    state.pending = { line, column };
+
+    if (state.timer) return; // throttle window active, pending will be sent
+
+    // Send immediately
     socketRef.current?.emit("cursor-move", { line, column });
+    state.pending = null;
+
+    // Start throttle window
+    state.timer = setTimeout(() => {
+      if (state.pending) {
+        socketRef.current?.emit("cursor-move", state.pending);
+        state.pending = null;
+      }
+      state.timer = null;
+    }, 50);
   }, []);
 
   return {
