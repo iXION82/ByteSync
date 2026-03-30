@@ -34,12 +34,14 @@ const PARTICIPANT_COLORS = [
 
 interface RoomOwner {
   userId: string;
+  clerkId?: string;
   name: string;
   username: string;
 }
 
 interface RoomParticipant {
   userId: string;
+  clerkId?: string;
   role: string;
   name: string;
   username: string;
@@ -256,6 +258,14 @@ export default function SessionPage() {
 
   // ─── Language change handler ───────────────────────────────
   const handleLanguageChange = useCallback((newLangId: string) => {
+    if (user?.id !== roomDetails?.owner?.clerkId) {
+      alert("Only the room owner can change the language.");
+      return;
+    }
+
+    const confirmChange = window.confirm("Changing the language will overwrite the existing code in the room for everyone. Are you sure you want to proceed?");
+    if (!confirmChange) return;
+
     setLanguageId(newLangId);
     const lang = getLanguageById(newLangId);
     if (lang) {
@@ -266,7 +276,7 @@ export default function SessionPage() {
     setOutput("");
     setError("");
     setExecutionTime(null);
-  }, [emitLanguageChange]);
+  }, [emitLanguageChange, user?.id, roomDetails?.owner?.clerkId]);
 
   // ─── Run code ──────────────────────────────────────────────
   const handleRunCode = useCallback(async () => {
@@ -389,12 +399,14 @@ export default function SessionPage() {
             <label className="font-sans text-[0.7rem] font-semibold text-(--text-muted) tracking-[0.06em] uppercase" htmlFor="lang-select">LANG:</label>
             <select
               id="lang-select"
-              className="font-sans text-[0.8rem] font-medium text-foreground bg-(--bg-card) border border-(--border-color) rounded-md py-[0.35rem] px-[0.6rem] outline-none cursor-pointer transition-all duration-200 appearance-auto focus:border-(--accent) focus:ring-2"
+              className="font-sans text-[0.8rem] font-medium text-foreground bg-(--bg-card) border border-(--border-color) rounded-md py-[0.35rem] px-[0.6rem] outline-none cursor-pointer transition-all duration-200 appearance-auto focus:border-(--accent) focus:ring-2 disabled:opacity-50 disabled:cursor-not-allowed"
               value={languageId}
               onChange={(e) => handleLanguageChange(e.target.value)}
+              disabled={user?.id !== roomDetails?.owner?.clerkId}
+              title={user?.id !== roomDetails?.owner?.clerkId ? "Only the room owner can change the language" : "Change room language"}
             >
               {LANGUAGES.map((lang) => (
-                <option key={lang.id} value={lang.id}>
+                <option key={lang.id} value={lang.id} className="bg-background text-foreground">
                   {lang.label}
                 </option>
               ))}
@@ -488,7 +500,13 @@ export default function SessionPage() {
                   </div>
                 ) : (
                   chatMessages.map((msg) => {
-                    const isMe = user && msg.senderId === (roomDetails?.participants.find(p => p.userId === user.id)?.userId || roomDetails?.owner?.userId);
+                    // Match message senderId with my DB userId by looking up my clerkId in participants/owner
+                    const myDbUserId =
+                      roomDetails?.owner?.clerkId === user?.id
+                        ? roomDetails?.owner?.userId
+                        : roomDetails?.participants.find((p) => p.clerkId === user?.id)?.userId;
+                    const isMe = Boolean(myDbUserId && msg.senderId === myDbUserId);
+                    
                     const senderName = getSenderName(msg.senderId);
                     const color = getSenderColor(msg.senderId);
                     const time = new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });

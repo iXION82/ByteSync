@@ -96,7 +96,6 @@ export default function SignInForm() {
     setError("");
 
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const result = await (signIn as any).attemptSecondFactor({
         strategy: verificationMode,
         code: verificationCode,

@@ -203,6 +203,7 @@ router.get("/details/:roomId", async (req: Request<{ roomId: string }>, res: Res
         const user = await findUserById(au.userId.toString());
         return {
           userId: au.userId.toString(),
+          clerkId: user?.clerkId,
           role: au.role,
           name: user?.name || user?.username || "Unknown",
           username: user?.username || "unknown",
@@ -215,7 +216,7 @@ router.get("/details/:roomId", async (req: Request<{ roomId: string }>, res: Res
     res.json({
       ...safeRoom,
       owner: owner
-        ? { userId: owner._id.toString(), name: owner.name, username: owner.username }
+        ? { userId: owner._id.toString(), clerkId: owner.clerkId, name: owner.name, username: owner.username }
         : null,
       participants,
     });
