@@ -12,6 +12,13 @@ import {
   type RoomFile,
 } from "../models/Room.js";
 import { findUserById, setActiveRoom, clearActiveRoom } from "../models/User.js";
+import {
+  createSnapshot,
+  createEditEventsBatch,
+  getLatestSnapshot,
+  type EditEvent,
+  type SnapshotFile,
+} from "../models/SessionReplay.js";
 
 // Track connected users per room
 const roomUsers = new Map<string, Map<string, { socketId: string; username: string; userId: string }>>();
@@ -26,6 +33,12 @@ interface RoomBuffer {
 }
 const roomCodeBuffer = new Map<string, RoomBuffer>();
 
+// ─── Session Replay Tracking ────────────────────────────────────
+// Buffer edit events per room (flushed alongside snapshots)
+const editEventBuffer = new Map<string, EditEvent[]>();
+// Track the current snapshot sequence per room for edit event references
+const currentSnapshotSeq = new Map<string, number>();
+
 // Save interval timers per room
 const saveTimers = new Map<string, NodeJS.Timeout>();
 
@@ -34,7 +47,7 @@ const SAVE_INTERVAL_MS = 3 * 60 * 1000; // 3 minutes
 /**
  * Save the buffered code to the database (saves all dirty files)
  */
-async function flushCodeToDb(roomId: string) {
+async function flushCodeToDb(roomId: string, trigger: "auto" | "manual" | "join" | "leave" | "file-change" | "language-change" = "auto", userId?: string, username?: string) {
   const buffer = roomCodeBuffer.get(roomId);
   if (!buffer || !buffer.dirty) return;
 
@@ -51,7 +64,40 @@ async function flushCodeToDb(roomId: string) {
     }
 
     buffer.dirty = false;
-    console.log(`💾 Auto-saved code for room ${roomId}`);
+
+    // ─── Session Replay: Create snapshot ─────────────────────
+    try {
+      const snapshotFiles: SnapshotFile[] = Array.from(buffer.files.entries()).map(([fn, data]) => ({
+        filename: fn,
+        content: data.content,
+        language: data.language,
+      }));
+
+      const snapshot = await createSnapshot({
+        roomId: new ObjectId(roomId),
+        timestamp: new Date(),
+        files: snapshotFiles,
+        activeFile: buffer.activeFile,
+        codeLanguage: buffer.codeLanguage,
+        userId: userId ? new ObjectId(userId) : undefined,
+        username,
+        trigger,
+      });
+
+      // Update the current snapshot seq for this room
+      currentSnapshotSeq.set(roomId, snapshot.seq);
+
+      // Flush buffered edit events
+      const pendingEdits = editEventBuffer.get(roomId);
+      if (pendingEdits && pendingEdits.length > 0) {
+        await createEditEventsBatch(pendingEdits);
+        editEventBuffer.set(roomId, []);
+      }
+    } catch (replayErr) {
+      console.error(`Error recording replay snapshot for room ${roomId}:`, replayErr);
+    }
+
+    console.log(`💾 Auto-saved code for room ${roomId} (trigger: ${trigger})`);
   } catch (error) {
     console.error(`Error auto-saving code for room ${roomId}:`, error);
   }
@@ -199,6 +245,23 @@ export function registerSocketHandlers(io: Server) {
         });
 
         console.log(`👤 ${user.username || user.name} joined room ${room.roomCode}`);
+
+        // ─── Session Replay: Record join snapshot ────────────
+        try {
+          // Initialize replay tracking for this room
+          if (!editEventBuffer.has(roomId)) editEventBuffer.set(roomId, []);
+          const latestSnap = await getLatestSnapshot(roomId);
+          currentSnapshotSeq.set(roomId, latestSnap?.seq ?? -1);
+
+          // Mark buffer dirty temporarily to force a snapshot
+          const buf = roomCodeBuffer.get(roomId);
+          if (buf) {
+            buf.dirty = true;
+            await flushCodeToDb(roomId, "join", user._id.toString(), user.username || user.name);
+          }
+        } catch (replayErr) {
+          console.error("Error recording join snapshot:", replayErr);
+        }
       } catch (error) {
         console.error("Error joining room via socket:", error);
         socket.emit("error", { message: "Failed to join room" });
@@ -229,10 +292,23 @@ export function registerSocketHandlers(io: Server) {
         if (data.codeLanguage) buffer.codeLanguage = data.codeLanguage;
         buffer.dirty = true;
       }
+
+      // ─── Session Replay: Buffer edit event ─────────────────
+      const edits = editEventBuffer.get(currentRoomId);
+      if (edits) {
+        edits.push({
+          roomId: new ObjectId(currentRoomId),
+          timestamp: new Date(),
+          filename: data.filename || buffer?.activeFile || "unknown",
+          content: data.code,
+          afterSnapshotSeq: currentSnapshotSeq.get(currentRoomId) ?? 0,
+          userId: currentUserId ? new ObjectId(currentUserId) : undefined,
+        });
+      }
     });
 
     // ─── Language Change ──────────────────────────────────────
-    socket.on("language-change", (data: { codeLanguage: string; code: string }) => {
+    socket.on("language-change", async (data: { codeLanguage: string; code: string }) => {
       if (!currentRoomId) return;
 
       socket.to(currentRoomId).emit("language-update", {
@@ -251,6 +327,9 @@ export function registerSocketHandlers(io: Server) {
           activeFileData.language = data.codeLanguage;
         }
         buffer.dirty = true;
+
+        // ─── Session Replay: Snapshot on language change ─────
+        await flushCodeToDb(currentRoomId, "language-change", currentUserId || undefined);
       }
     });
 
@@ -291,6 +370,13 @@ export function registerSocketHandlers(io: Server) {
         });
 
         console.log(`📄 File created: ${data.filename} in room ${currentRoomId}`);
+
+        // ─── Session Replay: Snapshot on file creation ───────
+        const buf = roomCodeBuffer.get(currentRoomId);
+        if (buf) {
+          buf.dirty = true;
+          await flushCodeToDb(currentRoomId, "file-change", currentUserId || undefined);
+        }
       } catch (error) {
         console.error("Error creating file:", error);
         socket.emit("error", { message: "Failed to create file" });
@@ -337,6 +423,13 @@ export function registerSocketHandlers(io: Server) {
         });
 
         console.log(`🗑️ File deleted: ${data.filename} in room ${currentRoomId}`);
+
+        // ─── Session Replay: Snapshot on file deletion ───────
+        const buf = roomCodeBuffer.get(currentRoomId);
+        if (buf) {
+          buf.dirty = true;
+          await flushCodeToDb(currentRoomId, "file-change", currentUserId || undefined);
+        }
       } catch (error) {
         console.error("Error deleting file:", error);
         socket.emit("error", { message: "Failed to delete file" });
@@ -379,6 +472,13 @@ export function registerSocketHandlers(io: Server) {
         });
 
         console.log(`✏️ File renamed: ${data.oldFilename} → ${data.newFilename} in room ${currentRoomId}`);
+
+        // ─── Session Replay: Snapshot on file rename ─────────
+        const buf = roomCodeBuffer.get(currentRoomId);
+        if (buf) {
+          buf.dirty = true;
+          await flushCodeToDb(currentRoomId, "file-change", currentUserId || undefined);
+        }
       } catch (error) {
         console.error("Error renaming file:", error);
         socket.emit("error", { message: "Failed to rename file" });
@@ -460,7 +560,7 @@ export function registerSocketHandlers(io: Server) {
     // ─── Manual Save (client can request explicit save) ───────
     socket.on("save-code", async () => {
       if (!currentRoomId) return;
-      await flushCodeToDb(currentRoomId);
+      await flushCodeToDb(currentRoomId, "manual", currentUserId || undefined);
       socket.emit("code-saved", { timestamp: new Date().toISOString() });
     });
 
@@ -489,8 +589,12 @@ async function handleLeaveRoom(
   roomId: string,
   userId: string | null
 ) {
-  // Flush code to DB before leaving
-  await flushCodeToDb(roomId);
+  // Flush code to DB before leaving (with leave snapshot)
+  const buffer = roomCodeBuffer.get(roomId);
+  if (buffer) {
+    buffer.dirty = true; // force snapshot even if no edits
+  }
+  await flushCodeToDb(roomId, "leave", userId || undefined);
 
   socket.leave(roomId);
   removeUserFromTracking(roomId, socket.id);

@@ -561,6 +561,18 @@ export default function SessionPage() {
             </svg>
             CLEAR
           </button>
+          {/* Replay button */}
+          <button
+            className="flex items-center gap-[0.35rem] font-mono text-[1.05rem] font-normal py-[0.3rem] px-[0.9rem] rounded-md cursor-pointer transition-all duration-200 border border-(--border-color) whitespace-nowrap tracking-[0.02em] bg-transparent text-(--text-muted) active:scale-[0.97] hover:border-(--accent) hover:text-(--accent) hover:bg-(--bg-card)"
+            onClick={() => window.open(`/room/replay/${roomIdStr}`, '_blank')}
+            title="Session replay — time-travel through your coding history"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10" />
+              <polyline points="12 6 12 12 16 14" />
+            </svg>
+            REPLAY
+          </button>
           <button
             className="flex items-center gap-[0.35rem] font-mono text-[1.05rem] font-normal py-[0.3rem] px-[0.9rem] rounded-md cursor-pointer transition-all duration-200 border border-transparent whitespace-nowrap tracking-[0.02em] disabled:opacity-50 disabled:cursor-not-allowed text-(--btn-primary-text) active:scale-[0.97] hover:-translate-y-px"
             style={{ background: "var(--btn-primary-bg)", boxShadow: "0 0 12px var(--accent-glow)" }}

@@ -307,4 +307,77 @@ router.delete("/:roomId", async (req: Request<{ roomId: string }>, res: Response
   }
 });
 
+// ─── Session Replay Endpoints ──────────────────────────────────
+
+import {
+  getSnapshotsByRoom,
+  getSnapshotCount,
+  getEditEventsBetweenSnapshots,
+  getSnapshotBySeq,
+} from "../models/SessionReplay.js";
+
+/**
+ * GET /api/rooms/:roomId/replay/snapshots
+ * Returns the snapshot timeline for a room.
+ * Query: ?limit=500
+ */
+router.get("/:roomId/replay/snapshots", async (req: Request, res: Response) => {
+  try {
+    const roomId = req.params.roomId as string;
+    const limit = Math.min(parseInt(req.query.limit as string) || 500, 2000);
+
+    const snapshots = await getSnapshotsByRoom(roomId, limit);
+    const count = await getSnapshotCount(roomId);
+
+    res.json({ snapshots, total: count });
+  } catch (error) {
+    console.error("Error fetching replay snapshots:", error);
+    res.status(500).json({ error: "Failed to fetch replay data" });
+  }
+});
+
+/**
+ * GET /api/rooms/:roomId/replay/snapshot/:seq
+ * Returns a specific snapshot and all edit events that follow it.
+ */
+router.get("/:roomId/replay/snapshot/:seq", async (req: Request, res: Response) => {
+  try {
+    const roomId = req.params.roomId as string;
+    const seq = req.params.seq as string;
+    const seqNum = parseInt(seq);
+
+    const snapshot = await getSnapshotBySeq(roomId, seqNum);
+    if (!snapshot) {
+      res.status(404).json({ error: "Snapshot not found" });
+      return;
+    }
+
+    const editEvents = await getEditEventsBetweenSnapshots(roomId, seqNum);
+
+    res.json({ snapshot, editEvents });
+  } catch (error) {
+    console.error("Error fetching snapshot detail:", error);
+    res.status(500).json({ error: "Failed to fetch snapshot" });
+  }
+});
+
+/**
+ * GET /api/rooms/:roomId/replay/events?afterSeq=0&limit=5000
+ * Returns edit events after a specific snapshot sequence.
+ */
+router.get("/:roomId/replay/events", async (req: Request, res: Response) => {
+  try {
+    const roomId = req.params.roomId as string;
+    const afterSeq = parseInt(req.query.afterSeq as string) || 0;
+    const limit = Math.min(parseInt(req.query.limit as string) || 5000, 10000);
+
+    const events = await getEditEventsBetweenSnapshots(roomId, afterSeq, limit);
+
+    res.json({ events, count: events.length });
+  } catch (error) {
+    console.error("Error fetching edit events:", error);
+    res.status(500).json({ error: "Failed to fetch edit events" });
+  }
+});
+
 export default router;
