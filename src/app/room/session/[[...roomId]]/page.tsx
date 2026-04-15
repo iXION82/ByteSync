@@ -6,8 +6,9 @@ import { useParams, useRouter } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import { motion, AnimatePresence } from "framer-motion";
 import CodeRunner from "@/components/editor/CodeRunner";
-import { LANGUAGES, DEFAULT_LANGUAGE_ID, getLanguageById } from "@/lib/editorConstants";
-import { useSocket, type SocketUser } from "@/hooks/useSocket";
+import FileTree, { type FileItem } from "@/components/editor/FileTree";
+import { LANGUAGES, DEFAULT_LANGUAGE_ID, getLanguageById, inferLanguageFromFilename } from "@/lib/editorConstants";
+import { useSocket, type SocketUser, type SocketFile } from "@/hooks/useSocket";
 import type { CodeEditorHandle } from "@/components/editor/CodeEditor";
 
 // Dynamic import Monaco to avoid SSR issues
@@ -84,6 +85,11 @@ export default function SessionPage() {
   const [lastSaved, setLastSaved] = useState<string | null>(null);
   const [justSaved, setJustSaved] = useState(false);
 
+  // Multi-file state
+  const [files, setFiles] = useState<FileItem[]>([]);
+  const [activeFile, setActiveFile] = useState<string>("");
+  const [fileTreeOpen, setFileTreeOpen] = useState(true);
+
   // Live participants from socket
   const [liveUsers, setLiveUsers] = useState<SocketUser[]>([]);
 
@@ -113,6 +119,7 @@ export default function SessionPage() {
   const isRemoteUpdate = useRef(false);
 
   const currentLang = getLanguageById(languageId)!;
+  const isOwner = Boolean(user?.id && roomDetails?.owner?.clerkId === user.id);
 
   // ─── Fetch room details + chat history on mount ────────────
   useEffect(() => {
@@ -157,7 +164,10 @@ export default function SessionPage() {
   }, [roomIdStr]);
 
   // ─── Socket integration ────────────────────────────────────
-  const { emitCodeChange, emitLanguageChange, emitSave, emitMessage, emitCursorMove } = useSocket({
+  const {
+    emitCodeChange, emitLanguageChange, emitSave, emitMessage, emitCursorMove,
+    emitCreateFile, emitDeleteFile, emitRenameFile, emitSwitchFile,
+  } = useSocket({
     roomId: roomIdStr,
     clerkId: user?.id || "",
     onRoomState: (data) => {
@@ -169,12 +179,21 @@ export default function SessionPage() {
         if (lang) setLanguageId(lang.id);
       }
       setLiveUsers(data.users);
+      // Load files from room state
+      if (data.files && data.files.length > 0) {
+        setFiles(data.files.map((f: SocketFile) => ({ filename: f.filename, content: f.content, language: f.language })));
+        setActiveFile(data.activeFile || data.files[0].filename);
+      }
       setTimeout(() => { isRemoteUpdate.current = false; }, 0);
     },
     onCodeUpdate: (data) => {
+      // Only apply if it's for the file we're currently viewing
+      if (data.filename && data.filename !== activeFile) return;
       isRemoteUpdate.current = true;
       setCode(data.code);
       editorRef.current?.setRemoteCode(data.code);
+      // Also update the files array in memory
+      setFiles((prev) => prev.map((f) => f.filename === (data.filename || activeFile) ? { ...f, content: data.code } : f));
       setTimeout(() => { isRemoteUpdate.current = false; }, 0);
     },
     onLanguageUpdate: (data) => {
@@ -209,6 +228,38 @@ export default function SessionPage() {
     },
     onNewMessage: (data) => {
       setChatMessages((prev) => [...prev, data]);
+    },
+    // ─── Multi-file socket callbacks ──────────────────────────
+    onFileCreated: (data) => {
+      setFiles(data.files.map((f: SocketFile) => ({ filename: f.filename, content: f.content, language: f.language })));
+    },
+    onFileDeleted: (data) => {
+      setFiles(data.files.map((f: SocketFile) => ({ filename: f.filename, content: f.content, language: f.language })));
+      // If the deleted file was the one we had open, switch to the new active
+      if (activeFile === data.filename) {
+        setActiveFile(data.activeFile);
+        const switchedFile = data.files.find((f: SocketFile) => f.filename === data.activeFile);
+        if (switchedFile) {
+          isRemoteUpdate.current = true;
+          setCode(switchedFile.content);
+          editorRef.current?.setRemoteCode(switchedFile.content);
+          const lang = LANGUAGES.find(l => l.monacoLang === switchedFile.language || l.id === switchedFile.language);
+          if (lang) setLanguageId(lang.id);
+          setTimeout(() => { isRemoteUpdate.current = false; }, 0);
+        }
+      }
+    },
+    onFileRenamed: (data) => {
+      setFiles(data.files.map((f: SocketFile) => ({ filename: f.filename, content: f.content, language: f.language })));
+      // If we had the old name active, switch to the new name
+      if (activeFile === data.oldFilename) {
+        setActiveFile(data.newFilename);
+      }
+    },
+    onFileSwitched: (data) => {
+      // Another user switched the room's active file — update our view too
+      // Only auto-switch if it wasn't us who triggered it
+      // (our own switch is handled locally already)
     },
   });
 
@@ -254,20 +305,54 @@ export default function SessionPage() {
 
   const handleCodeChange = useCallback((newCode: string) => {
     setCode(newCode);
+    // Keep the in-memory files array in sync
+    setFiles((prev) => prev.map((f) => f.filename === activeFile ? { ...f, content: newCode } : f));
 
     // Only emit to socket if this is a local edit (not a remote update)
     if (!isRemoteUpdate.current) {
       // Debounce: wait 150ms after last keystroke before sending
       if (debounceTimer.current) clearTimeout(debounceTimer.current);
       debounceTimer.current = setTimeout(() => {
-        emitCodeChange(newCode, currentLang.monacoLang);
+        emitCodeChange(newCode, currentLang.monacoLang, activeFile);
       }, 150);
     }
-  }, [emitCodeChange, currentLang]);
+  }, [emitCodeChange, currentLang, activeFile]);
+
+  // ─── Multi-file action handlers ────────────────────────────
+  const handleSwitchFile = useCallback((filename: string) => {
+    if (filename === activeFile) return;
+    // Save current file content in memory before switching
+    const targetFile = files.find((f) => f.filename === filename);
+    if (!targetFile) return;
+
+    setActiveFile(filename);
+    isRemoteUpdate.current = true;
+    setCode(targetFile.content);
+    editorRef.current?.setRemoteCode(targetFile.content);
+
+    // Update language to match the file
+    const lang = LANGUAGES.find(l => l.monacoLang === targetFile.language || l.id === targetFile.language);
+    if (lang) setLanguageId(lang.id);
+
+    emitSwitchFile(filename);
+    setTimeout(() => { isRemoteUpdate.current = false; }, 0);
+  }, [activeFile, files, emitSwitchFile]);
+
+  const handleCreateFile = useCallback((filename: string, language: string) => {
+    emitCreateFile(filename, language);
+  }, [emitCreateFile]);
+
+  const handleDeleteFile = useCallback((filename: string) => {
+    emitDeleteFile(filename);
+  }, [emitDeleteFile]);
+
+  const handleRenameFile = useCallback((oldFilename: string, newFilename: string) => {
+    emitRenameFile(oldFilename, newFilename);
+  }, [emitRenameFile]);
 
   // ─── Language change handler ───────────────────────────────
   const handleLanguageChange = useCallback((newLangId: string) => {
-    if (user?.id !== roomDetails?.owner?.clerkId) {
+    if (!isOwner) {
       alert("Only the room owner can change the language.");
       return;
     }
@@ -281,11 +366,13 @@ export default function SessionPage() {
       setCode(lang.starterCode);
       editorRef.current?.setCode(lang.starterCode);
       emitLanguageChange(lang.monacoLang, lang.starterCode);
+      // Update active file in files array
+      setFiles((prev) => prev.map((f) => f.filename === activeFile ? { ...f, content: lang.starterCode, language: lang.monacoLang } : f));
     }
     setOutput("");
     setError("");
     setExecutionTime(null);
-  }, [emitLanguageChange, user?.id, roomDetails?.owner?.clerkId]);
+  }, [emitLanguageChange, isOwner, activeFile]);
 
   // ─── Run code ──────────────────────────────────────────────
   const handleRunCode = useCallback(async () => {
@@ -394,6 +481,16 @@ export default function SessionPage() {
       <div className="flex items-center justify-between px-3 py-2 sm:px-4 sm:py-0 h-auto sm:h-13 min-h-13 bg-(--bg-secondary) border-b border-(--border-color) gap-2 sm:gap-4 z-10 flex-wrap sm:flex-nowrap">
         <div className="flex items-center gap-5">
           <div className="flex items-center gap-[0.4rem] font-mono text-base sm:text-[1.2rem] text-(--accent) whitespace-nowrap">
+            {/* File tree toggle */}
+            <button
+              onClick={() => setFileTreeOpen((v) => !v)}
+              className="hidden md:flex items-center justify-center w-7 h-7 rounded-md border border-(--border-color) text-(--text-muted) hover:text-(--accent) hover:border-(--accent) bg-transparent cursor-pointer transition-all duration-150 active:scale-[0.95] mr-1"
+              title={fileTreeOpen ? "Hide file tree" : "Show file tree"}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+              </svg>
+            </button>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
               <circle cx="9" cy="7" r="4"></circle>
@@ -417,8 +514,8 @@ export default function SessionPage() {
               className="font-sans text-[0.8rem] font-medium text-foreground bg-(--bg-card) border border-(--border-color) rounded-md py-[0.35rem] px-[0.6rem] outline-none cursor-pointer transition-all duration-200 appearance-auto focus:border-(--accent) focus:ring-2 disabled:opacity-50 disabled:cursor-not-allowed"
               value={languageId}
               onChange={(e) => handleLanguageChange(e.target.value)}
-              disabled={user?.id !== roomDetails?.owner?.clerkId}
-              title={user?.id !== roomDetails?.owner?.clerkId ? "Only the room owner can change the language" : "Change room language"}
+              disabled={!isOwner}
+              title={!isOwner ? "Only the room owner can change the language" : "Change room language"}
             >
               {LANGUAGES.map((lang) => (
                 <option key={lang.id} value={lang.id} className="bg-background text-foreground">
@@ -487,9 +584,24 @@ export default function SessionPage() {
         </div>
       </div>
 
-      {/* Main Content Area: Editor + Right Panel */}
+      {/* Main Content Area: FileTree + Editor + Right Panel */}
       <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
-        {/* Left: Code Editor */}
+        {/* File Tree Sidebar */}
+        {fileTreeOpen && (
+          <div className="hidden md:flex w-[11rem] min-w-[11rem] max-w-[14rem] h-full flex-shrink-0 border-r border-(--border-color)">
+            <FileTree
+              files={files}
+              activeFile={activeFile}
+              isOwner={isOwner}
+              onSwitchFile={handleSwitchFile}
+              onCreateFile={handleCreateFile}
+              onDeleteFile={handleDeleteFile}
+              onRenameFile={handleRenameFile}
+            />
+          </div>
+        )}
+
+        {/* Code Editor */}
         <div className="h-[55%] md:h-auto md:flex-1 min-w-0 overflow-hidden border-b md:border-b-0 border-(--border-color)">
           <CodeEditor
             ref={editorRef}

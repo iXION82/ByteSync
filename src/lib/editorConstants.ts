@@ -227,3 +227,66 @@ export function getLanguageById(id: string): LanguageConfig | undefined {
 
 // Default language
 export const DEFAULT_LANGUAGE_ID = "javascript";
+
+// Extension → Monaco language mapping
+const EXT_TO_LANGUAGE: Record<string, string> = {
+  js: "javascript",
+  mjs: "javascript",
+  cjs: "javascript",
+  ts: "typescript",
+  tsx: "typescript",
+  py: "python",
+  java: "java",
+  cpp: "cpp",
+  cc: "cpp",
+  cxx: "cpp",
+  c: "c",
+  h: "c",
+  go: "go",
+  rs: "rust",
+  html: "html",
+  css: "css",
+  json: "json",
+  md: "markdown",
+  txt: "plaintext",
+};
+
+// Language ID → file extension
+const LANGUAGE_TO_EXT: Record<string, string> = {
+  javascript: "js",
+  typescript: "ts",
+  python: "py",
+  java: "java",
+  cpp: "cpp",
+  c: "c",
+  go: "go",
+  rust: "rs",
+  html: "html",
+  css: "css",
+  json: "json",
+  markdown: "md",
+};
+
+/**
+ * Infer the Monaco language ID from a filename's extension.
+ * Returns "javascript" as default if unknown.
+ */
+export function inferLanguageFromFilename(filename: string): string {
+  const ext = filename.split(".").pop()?.toLowerCase() || "";
+  return EXT_TO_LANGUAGE[ext] || "javascript";
+}
+
+/**
+ * Get the default file extension for a language ID.
+ */
+export function getExtensionForLanguage(languageId: string): string {
+  return LANGUAGE_TO_EXT[languageId] || "txt";
+}
+
+/**
+ * Get the Monaco language string for a given language ID.
+ */
+export function getMonacoLangForId(languageId: string): string {
+  const lang = LANGUAGES.find((l) => l.id === languageId);
+  return lang?.monacoLang || languageId;
+}
