@@ -1,14 +1,30 @@
 import { Server, type Socket } from "socket.io";
 import { ObjectId } from "mongodb";
 import { createChatMessage } from "../models/Chat.js";
-import { updateRoomCode, findRoomById } from "../models/Room.js";
+import {
+  updateRoomCode,
+  findRoomById,
+  addFileToRoom,
+  removeFileFromRoom,
+  renameFileInRoom,
+  setActiveFile,
+  updateFileContent,
+  type RoomFile,
+} from "../models/Room.js";
 import { findUserById, setActiveRoom, clearActiveRoom } from "../models/User.js";
 
 // Track connected users per room
 const roomUsers = new Map<string, Map<string, { socketId: string; username: string; userId: string }>>();
 
-// Track latest code per room (in-memory buffer for interval saves)
-const roomCodeBuffer = new Map<string, { code: string; codeLanguage?: string; dirty: boolean }>();
+// Track latest code per room — now file-aware
+// files: Map<filename, content>, activeFile: current filename
+interface RoomBuffer {
+  files: Map<string, { content: string; language: string }>;
+  activeFile: string;
+  codeLanguage: string;
+  dirty: boolean;
+}
+const roomCodeBuffer = new Map<string, RoomBuffer>();
 
 // Save interval timers per room
 const saveTimers = new Map<string, NodeJS.Timeout>();
@@ -16,14 +32,24 @@ const saveTimers = new Map<string, NodeJS.Timeout>();
 const SAVE_INTERVAL_MS = 3 * 60 * 1000; // 3 minutes
 
 /**
- * Save the buffered code to the database
+ * Save the buffered code to the database (saves all dirty files)
  */
 async function flushCodeToDb(roomId: string) {
   const buffer = roomCodeBuffer.get(roomId);
   if (!buffer || !buffer.dirty) return;
 
   try {
-    await updateRoomCode(roomId, buffer.code, buffer.codeLanguage);
+    // Save each file's content to the DB
+    for (const [filename, fileData] of buffer.files.entries()) {
+      await updateFileContent(roomId, filename, fileData.content);
+    }
+
+    // Also sync the top-level code/codeLanguage for backward compat
+    const activeFileData = buffer.files.get(buffer.activeFile);
+    if (activeFileData) {
+      await updateRoomCode(roomId, activeFileData.content, buffer.codeLanguage);
+    }
+
     buffer.dirty = false;
     console.log(`💾 Auto-saved code for room ${roomId}`);
   } catch (error) {
@@ -53,6 +79,19 @@ function stopSaveTimer(roomId: string) {
     clearInterval(timer);
     saveTimers.delete(roomId);
   }
+}
+
+/**
+ * Get the serializable files array from the buffer
+ */
+function getBufferedFiles(roomId: string): RoomFile[] {
+  const buffer = roomCodeBuffer.get(roomId);
+  if (!buffer) return [];
+  return Array.from(buffer.files.entries()).map(([filename, data]) => ({
+    filename,
+    content: data.content,
+    language: data.language,
+  }));
 }
 
 export function registerSocketHandlers(io: Server) {
@@ -108,10 +147,24 @@ export function registerSocketHandlers(io: Server) {
           userId: user._id.toString(),
         });
 
-        // Initialize code buffer from DB if not present
+        // Initialize file-aware buffer from DB if not present
         if (!roomCodeBuffer.has(roomId)) {
+          const filesMap = new Map<string, { content: string; language: string }>();
+
+          // Populate from DB files array (or fall back to single code field)
+          if (room.files && room.files.length > 0) {
+            for (const f of room.files) {
+              filesMap.set(f.filename, { content: f.content, language: f.language });
+            }
+          } else {
+            // Backward compat: room has no files array yet
+            const defaultFilename = `main.${getExtension(room.codeLanguage)}`;
+            filesMap.set(defaultFilename, { content: room.code || "", language: room.codeLanguage });
+          }
+
           roomCodeBuffer.set(roomId, {
-            code: room.code || "",
+            files: filesMap,
+            activeFile: room.activeFile || filesMap.keys().next().value || "main.js",
             codeLanguage: room.codeLanguage,
             dirty: false,
           });
@@ -134,12 +187,15 @@ export function registerSocketHandlers(io: Server) {
           users: getUsersInRoom(roomId),
         });
 
-        // Send current room state to the joining user
-        const buffer = roomCodeBuffer.get(roomId);
+        // Send current room state to the joining user (now includes files)
+        const buffer = roomCodeBuffer.get(roomId)!;
+        const activeFileData = buffer.files.get(buffer.activeFile);
         socket.emit("room-state", {
-          code: buffer?.code || room.code,
-          codeLanguage: buffer?.codeLanguage || room.codeLanguage,
+          code: activeFileData?.content || room.code,
+          codeLanguage: activeFileData?.language || room.codeLanguage,
           users: getUsersInRoom(roomId),
+          files: getBufferedFiles(roomId),
+          activeFile: buffer.activeFile,
         });
 
         console.log(`👤 ${user.username || user.name} joined room ${room.roomCode}`);
@@ -150,7 +206,7 @@ export function registerSocketHandlers(io: Server) {
     });
 
     // ─── Code Change (real-time sync — broadcast only, no DB save) ──
-    socket.on("code-change", (data: { code: string; codeLanguage?: string }) => {
+    socket.on("code-change", (data: { code: string; codeLanguage?: string; filename?: string }) => {
       if (!currentRoomId) return;
 
       // Broadcast to others in the room (not sender)
@@ -158,20 +214,20 @@ export function registerSocketHandlers(io: Server) {
         code: data.code,
         codeLanguage: data.codeLanguage,
         userId: currentUserId,
+        filename: data.filename,
       });
 
       // Buffer the code in memory (saved to DB every 3 min or on leave)
       const buffer = roomCodeBuffer.get(currentRoomId);
       if (buffer) {
-        buffer.code = data.code;
+        const targetFile = data.filename || buffer.activeFile;
+        const existing = buffer.files.get(targetFile);
+        if (existing) {
+          existing.content = data.code;
+          if (data.codeLanguage) existing.language = data.codeLanguage;
+        }
         if (data.codeLanguage) buffer.codeLanguage = data.codeLanguage;
         buffer.dirty = true;
-      } else {
-        roomCodeBuffer.set(currentRoomId, {
-          code: data.code,
-          codeLanguage: data.codeLanguage,
-          dirty: true,
-        });
       }
     });
 
@@ -189,8 +245,180 @@ export function registerSocketHandlers(io: Server) {
       const buffer = roomCodeBuffer.get(currentRoomId);
       if (buffer) {
         buffer.codeLanguage = data.codeLanguage;
-        buffer.code = data.code;
+        const activeFileData = buffer.files.get(buffer.activeFile);
+        if (activeFileData) {
+          activeFileData.content = data.code;
+          activeFileData.language = data.codeLanguage;
+        }
         buffer.dirty = true;
+      }
+    });
+
+    // ─── Create File ──────────────────────────────────────────
+    socket.on("create-file", async (data: { filename: string; language: string; content?: string }) => {
+      if (!currentRoomId) return;
+
+      try {
+        // Auto-save current code before creating a new file
+        await flushCodeToDb(currentRoomId);
+
+        const newFile: RoomFile = {
+          filename: data.filename,
+          content: data.content || "",
+          language: data.language,
+        };
+
+        // Persist to DB
+        const updatedRoom = await addFileToRoom(currentRoomId, newFile);
+        if (!updatedRoom) {
+          socket.emit("error", { message: "Failed to create file (max 10 or duplicate name)" });
+          return;
+        }
+
+        // Update in-memory buffer
+        const buffer = roomCodeBuffer.get(currentRoomId);
+        if (buffer) {
+          buffer.files.set(data.filename, { content: newFile.content, language: newFile.language });
+        }
+
+        // Broadcast to entire room
+        io.to(currentRoomId).emit("file-created", {
+          filename: data.filename,
+          language: data.language,
+          content: newFile.content,
+          files: getBufferedFiles(currentRoomId),
+          userId: currentUserId,
+        });
+
+        console.log(`📄 File created: ${data.filename} in room ${currentRoomId}`);
+      } catch (error) {
+        console.error("Error creating file:", error);
+        socket.emit("error", { message: "Failed to create file" });
+      }
+    });
+
+    // ─── Delete File ──────────────────────────────────────────
+    socket.on("delete-file", async (data: { filename: string }) => {
+      if (!currentRoomId) return;
+
+      try {
+        // Auto-save before deleting
+        await flushCodeToDb(currentRoomId);
+
+        const updatedRoom = await removeFileFromRoom(currentRoomId, data.filename);
+        if (!updatedRoom) {
+          socket.emit("error", { message: "Cannot delete file (must keep at least 1)" });
+          return;
+        }
+
+        // Update in-memory buffer
+        const buffer = roomCodeBuffer.get(currentRoomId);
+        if (buffer) {
+          buffer.files.delete(data.filename);
+
+          // If deleted file was active, switch to first available file
+          if (buffer.activeFile === data.filename) {
+            const firstFile = buffer.files.keys().next().value;
+            if (firstFile) {
+              buffer.activeFile = firstFile;
+              const fileData = buffer.files.get(firstFile)!;
+              buffer.codeLanguage = fileData.language;
+              await setActiveFile(currentRoomId, firstFile);
+            }
+          }
+        }
+
+        // Broadcast to entire room
+        io.to(currentRoomId).emit("file-deleted", {
+          filename: data.filename,
+          files: getBufferedFiles(currentRoomId),
+          activeFile: buffer?.activeFile || "",
+          userId: currentUserId,
+        });
+
+        console.log(`🗑️ File deleted: ${data.filename} in room ${currentRoomId}`);
+      } catch (error) {
+        console.error("Error deleting file:", error);
+        socket.emit("error", { message: "Failed to delete file" });
+      }
+    });
+
+    // ─── Rename File ──────────────────────────────────────────
+    socket.on("rename-file", async (data: { oldFilename: string; newFilename: string }) => {
+      if (!currentRoomId) return;
+
+      try {
+        await flushCodeToDb(currentRoomId);
+
+        const updatedRoom = await renameFileInRoom(currentRoomId, data.oldFilename, data.newFilename);
+        if (!updatedRoom) {
+          socket.emit("error", { message: "Failed to rename file" });
+          return;
+        }
+
+        // Update in-memory buffer
+        const buffer = roomCodeBuffer.get(currentRoomId);
+        if (buffer) {
+          const fileData = buffer.files.get(data.oldFilename);
+          if (fileData) {
+            buffer.files.delete(data.oldFilename);
+            buffer.files.set(data.newFilename, fileData);
+          }
+          if (buffer.activeFile === data.oldFilename) {
+            buffer.activeFile = data.newFilename;
+          }
+        }
+
+        // Broadcast to entire room
+        io.to(currentRoomId).emit("file-renamed", {
+          oldFilename: data.oldFilename,
+          newFilename: data.newFilename,
+          files: getBufferedFiles(currentRoomId),
+          activeFile: buffer?.activeFile || "",
+          userId: currentUserId,
+        });
+
+        console.log(`✏️ File renamed: ${data.oldFilename} → ${data.newFilename} in room ${currentRoomId}`);
+      } catch (error) {
+        console.error("Error renaming file:", error);
+        socket.emit("error", { message: "Failed to rename file" });
+      }
+    });
+
+    // ─── Switch File ──────────────────────────────────────────
+    socket.on("switch-file", async (data: { filename: string }) => {
+      if (!currentRoomId) return;
+
+      try {
+        // Auto-save current file before switching
+        await flushCodeToDb(currentRoomId);
+
+        // Update active file in DB
+        await setActiveFile(currentRoomId, data.filename);
+
+        // Update in-memory buffer
+        const buffer = roomCodeBuffer.get(currentRoomId);
+        if (buffer) {
+          buffer.activeFile = data.filename;
+          const fileData = buffer.files.get(data.filename);
+          if (fileData) {
+            buffer.codeLanguage = fileData.language;
+          }
+        }
+
+        // Broadcast to entire room
+        const fileData = buffer?.files.get(data.filename);
+        io.to(currentRoomId).emit("file-switched", {
+          filename: data.filename,
+          content: fileData?.content || "",
+          language: fileData?.language || "",
+          userId: currentUserId,
+        });
+
+        console.log(`📂 Switched to file: ${data.filename} in room ${currentRoomId}`);
+      } catch (error) {
+        console.error("Error switching file:", error);
+        socket.emit("error", { message: "Failed to switch file" });
       }
     });
 
@@ -307,4 +535,13 @@ function getUsersInRoom(roomId: string): Array<{ socketId: string; username: str
   const users = roomUsers.get(roomId);
   if (!users) return [];
   return Array.from(users.values());
+}
+
+const EXT_MAP: Record<string, string> = {
+  javascript: "js", typescript: "ts", python: "py", java: "java",
+  "c++": "cpp", c: "c", go: "go", rust: "rs",
+};
+
+function getExtension(lang: string): string {
+  return EXT_MAP[lang] || "txt";
 }

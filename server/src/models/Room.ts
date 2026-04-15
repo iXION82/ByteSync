@@ -8,12 +8,23 @@ export interface AllowedUser {
   role: "editor" | "viewer";
 }
 
+/**
+ * Represents a single file inside a room's mini-project.
+ */
+export interface RoomFile {
+  filename: string;    // e.g. "main.js", "utils.py"
+  content: string;     // file content
+  language: string;    // Monaco language id (e.g. "javascript", "python")
+}
+
 export interface RoomDocument {
   ownerId: ObjectId;
   roomCode: string;
   passwordHash: string;
-  codeLanguage: string;
-  code: string;
+  codeLanguage: string;        // backward compat
+  code: string;                // active file content mirror (backward compat)
+  files: RoomFile[];           // all project files (max 10)
+  activeFile: string;          // filename of the currently active file
   allowedUsers: AllowedUser[];
   isActive: boolean;
   createdAt: Date;
@@ -52,7 +63,7 @@ export function generateRoomCode(): string {
 // ─── CRUD Functions ────────────────────────────────────────────
 
 export async function createRoom(
-  data: Pick<RoomDocument, "ownerId" | "passwordHash" | "codeLanguage" | "code">
+  data: Pick<RoomDocument, "ownerId" | "passwordHash" | "codeLanguage" | "code"> & { filename?: string }
 ): Promise<WithId<RoomDocument>> {
   const collection = await getRoomsCollection();
   const now = new Date();
@@ -66,12 +77,23 @@ export async function createRoom(
     attempts++;
   }
 
+  // Default filename based on language (e.g. "main.js")
+  const defaultFilename = data.filename || `main.${getExtensionForLanguage(data.codeLanguage)}`;
+
   const doc: RoomDocument = {
     ownerId: data.ownerId,
     roomCode,
     passwordHash: data.passwordHash,
     codeLanguage: data.codeLanguage,
     code: data.code,
+    files: [
+      {
+        filename: defaultFilename,
+        content: data.code,
+        language: data.codeLanguage,
+      },
+    ],
+    activeFile: defaultFilename,
     allowedUsers: [],
     isActive: true,
     createdAt: now,
@@ -144,6 +166,10 @@ export async function removeUserFromRoom(
   return result;
 }
 
+/**
+ * Update the code content of a room (backward compat — updates the `code` field
+ * and also syncs the matching file in the `files` array if present).
+ */
 export async function updateRoomCode(
   roomId: string,
   code: string,
@@ -159,11 +185,21 @@ export async function updateRoomCode(
     updateFields.codeLanguage = codeLanguage;
   }
 
+  // First update the top-level code field
   const result = await collection.findOneAndUpdate(
     { _id: new ObjectId(roomId) },
     { $set: updateFields },
     { returnDocument: "after" }
   );
+
+  // Also sync the active file's content in the files array
+  if (result?.activeFile) {
+    await collection.updateOne(
+      { _id: new ObjectId(roomId), "files.filename": result.activeFile },
+      { $set: { "files.$.content": code } }
+    );
+  }
+
   return result;
 }
 
@@ -183,4 +219,151 @@ export async function deleteRoom(roomId: string): Promise<boolean> {
   const collection = await getRoomsCollection();
   const result = await collection.deleteOne({ _id: new ObjectId(roomId) });
   return result.deletedCount === 1;
+}
+
+// ─── Multi-File CRUD Functions ─────────────────────────────────
+
+/**
+ * Update a specific file's content in a room.
+ */
+export async function updateFileContent(
+  roomId: string,
+  filename: string,
+  content: string
+): Promise<WithId<RoomDocument> | null> {
+  const collection = await getRoomsCollection();
+  const result = await collection.findOneAndUpdate(
+    { _id: new ObjectId(roomId), "files.filename": filename },
+    {
+      $set: {
+        "files.$.content": content,
+        updatedAt: new Date(),
+      },
+    },
+    { returnDocument: "after" }
+  );
+  return result;
+}
+
+/**
+ * Add a new file to a room (max 10 files).
+ */
+export async function addFileToRoom(
+  roomId: string,
+  file: RoomFile
+): Promise<WithId<RoomDocument> | null> {
+  const collection = await getRoomsCollection();
+  const result = await collection.findOneAndUpdate(
+    {
+      _id: new ObjectId(roomId),
+      "files.filename": { $ne: file.filename }, // prevent duplicate filenames
+      $expr: { $lt: [{ $size: "$files" }, 10] }, // max 10 files
+    },
+    {
+      $push: { files: file },
+      $set: { updatedAt: new Date() },
+    },
+    { returnDocument: "after" }
+  );
+  return result;
+}
+
+/**
+ * Remove a file from a room by filename.
+ * Cannot remove the last file.
+ */
+export async function removeFileFromRoom(
+  roomId: string,
+  filename: string
+): Promise<WithId<RoomDocument> | null> {
+  const collection = await getRoomsCollection();
+  const result = await collection.findOneAndUpdate(
+    {
+      _id: new ObjectId(roomId),
+      $expr: { $gt: [{ $size: "$files" }, 1] }, // keep at least 1 file
+    },
+    {
+      $pull: { files: { filename } },
+      $set: { updatedAt: new Date() },
+    },
+    { returnDocument: "after" }
+  );
+  return result;
+}
+
+/**
+ * Rename a file in a room.
+ */
+export async function renameFileInRoom(
+  roomId: string,
+  oldFilename: string,
+  newFilename: string
+): Promise<WithId<RoomDocument> | null> {
+  const collection = await getRoomsCollection();
+  const result = await collection.findOneAndUpdate(
+    {
+      _id: new ObjectId(roomId),
+      "files.filename": oldFilename,
+    },
+    {
+      $set: {
+        "files.$.filename": newFilename,
+        updatedAt: new Date(),
+      },
+    },
+    { returnDocument: "after" }
+  );
+  return result;
+}
+
+/**
+ * Set the active file for a room.
+ */
+export async function setActiveFile(
+  roomId: string,
+  filename: string
+): Promise<WithId<RoomDocument> | null> {
+  const collection = await getRoomsCollection();
+
+  // Find the file to get its content and language
+  const room = await collection.findOne({ _id: new ObjectId(roomId) });
+  const file = room?.files?.find(f => f.filename === filename);
+
+  const result = await collection.findOneAndUpdate(
+    { _id: new ObjectId(roomId) },
+    {
+      $set: {
+        activeFile: filename,
+        // Sync top-level code/codeLanguage fields for backward compat
+        ...(file ? { code: file.content, codeLanguage: file.language } : {}),
+        updatedAt: new Date(),
+      },
+    },
+    { returnDocument: "after" }
+  );
+  return result;
+}
+
+// ─── Helper: Language → File Extension ─────────────────────────
+
+const LANGUAGE_EXTENSIONS: Record<string, string> = {
+  javascript: "js",
+  typescript: "ts",
+  python: "py",
+  java: "java",
+  "c++": "cpp",
+  c: "c",
+  go: "go",
+  rust: "rs",
+  html: "html",
+  css: "css",
+  json: "json",
+  markdown: "md",
+};
+
+/**
+ * Get the file extension for a given language ID.
+ */
+export function getExtensionForLanguage(language: string): string {
+  return LANGUAGE_EXTENSIONS[language] || "txt";
 }
