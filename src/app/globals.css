@@ -1,10 +1,5 @@
 @import "tailwindcss";
 
-/* ═══════════════════════════════════════════════════════════════
-   ByteSync — 80s Retro CRT Design System
-   ═══════════════════════════════════════════════════════════════ */
-
-/* ─── Dark Theme (Default — Retro Neon Terminal) ─────────────── */
 :root,
 [data-theme="dark"] {
   --bg-primary: #0a0e1a;
@@ -21,7 +16,6 @@
   --accent-glow: rgba(0, 212, 255, 0.25);
   --accent-glow-strong: rgba(0, 212, 255, 0.45);
 
-  /* Multi-color accents */
   --accent-secondary: #ff6bff;
   --accent-secondary-glow: rgba(255, 107, 255, 0.25);
   --accent-tertiary: #ffb800;
@@ -51,22 +45,19 @@
   --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
   --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.5);
 
-  /* ─── Cursor Colors (for multi-user collaboration) ─────────── */
-  --cursor-1: #00d4ff;   /* Cyan */
-  --cursor-2: #ff6bff;   /* Magenta */
-  --cursor-3: #ffb800;   /* Amber */
-  --cursor-4: #00ff88;   /* Lime */
-  --cursor-5: #ff6b6b;   /* Coral */
-  --cursor-6: #a78bfa;   /* Purple */
-  --cursor-7: #2dd4bf;   /* Teal */
-  --cursor-8: #f472b6;   /* Rose */
+  --cursor-1: #00d4ff;
+  --cursor-2: #ff6bff;
+  --cursor-3: #ffb800;
+  --cursor-4: #00ff88;
+  --cursor-5: #ff6b6b;
+  --cursor-6: #a78bfa;
+  --cursor-7: #2dd4bf;
+  --cursor-8: #f472b6;
 
-  /* Custom cursor variables */
   --cursor-ring-color: rgba(0, 212, 255, 0.35);
   --cursor-ring-glow: rgba(0, 212, 255, 0.12);
 }
 
-/* ─── Light Theme (Warm Retro Cream) ─────────────────────────── */
 [data-theme="light"] {
   --bg-primary: #faf5e8;
   --bg-secondary: #f0e9d4;
@@ -113,7 +104,6 @@
   --cursor-7: #1a9a8a;
   --cursor-8: #c04080;
 
-  /* Custom cursor variables */
   --cursor-ring-color: rgba(0, 119, 170, 0.35);
   --cursor-ring-glow: rgba(0, 119, 170, 0.12);
 }
@@ -125,7 +115,6 @@
   --font-mono: var(--font-vt323);
 }
 
-/* ─── Box Sizing Reset (safe — no margin/padding override) ───── */
 *, *::before, *::after {
   box-sizing: border-box;
 }
@@ -145,7 +134,6 @@ body {
   transition: background 0.3s ease, color 0.3s ease;
 }
 
-/* ─── Animations ─────────────────────────────────────────────── */
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(12px); }
   to { opacity: 1; transform: translateY(0); }
@@ -200,7 +188,6 @@ body {
   50% { box-shadow: 0 0 0 6px transparent; }
 }
 
-/* ─── Monaco Editor: suppress green flash on programmatic edits ── */
 .monaco-editor .view-overlays .line-insert,
 .monaco-editor .view-overlays .line-delete,
 .monaco-editor .view-overlays .char-insert,
@@ -218,7 +205,6 @@ body {
   background: transparent !important;
 }
 
-/* Hide inline edit ghost decorations */
 .monaco-editor .inline-edit-remove,
 .monaco-editor .inline-edit-insert,
 .monaco-editor .inlineEditModified,
@@ -228,12 +214,10 @@ body {
   border: none !important;
 }
 
-/* Suppress range highlight flash */
 .monaco-editor .rangeHighlight {
   background: transparent !important;
 }
 
-/* Prevent word highlight flash */
 .monaco-editor .wordHighlight,
 .monaco-editor .wordHighlightStrong,
 .monaco-editor .wordHighlightText {

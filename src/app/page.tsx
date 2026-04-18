@@ -9,7 +9,6 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-[var(--bg-primary)] relative transition-colors duration-300">
-      {/* Scanline overlay — complex gradient moved to style prop */}
       <div
         className="fixed top-0 left-0 w-full h-full pointer-events-none z-[9999] opacity-60"
         style={{
@@ -19,9 +18,7 @@ export default function Home() {
         aria-hidden="true"
       />
 
-      {/* Hero Section */}
       <section className="relative min-h-screen flex items-center justify-center pt-32 pb-16 px-6 overflow-hidden">
-        {/* Ambient glow orbs */}
         <div
           className="absolute rounded-full pointer-events-none w-[500px] h-[500px] top-[5%] left-[10%] blur-[120px]"
           style={{
@@ -39,7 +36,6 @@ export default function Home() {
         />
 
         <div className="relative w-full max-w-[800px] mx-auto text-center z-[1]">
-          {/* Retro badge */}
           <div className="inline-flex items-center gap-2 bg-[var(--bg-card)] border border-[var(--border-color)] text-[var(--accent)] px-[1.2rem] py-[0.4rem] rounded-[100px] font-sans text-[0.75rem] font-semibold tracking-[0.1em] uppercase mb-8">
             <span
               className="w-1.5 h-1.5 rounded-full"
@@ -51,7 +47,6 @@ export default function Home() {
             SYSTEM ONLINE — v1.0
           </div>
 
-          {/* Main title */}
           <h1
             className="font-mono font-normal leading-none text-[var(--accent)] mb-5 tracking-[0.02em]"
             style={{
@@ -79,7 +74,6 @@ export default function Home() {
             Built for developers who ship fast.
           </motion.p>
 
-          {/* Auth-aware buttons */}
           <motion.div
             className="flex flex-wrap items-center justify-center gap-4"
             initial={{ opacity: 0, y: 20 }}
@@ -170,7 +164,6 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Terminal Preview */}
       <section className="px-6 pb-20 max-w-[700px] mx-auto">
         <motion.div
           className="bg-[var(--terminal-bg)] border border-[var(--terminal-border)] rounded-[12px] overflow-hidden"
@@ -214,7 +207,6 @@ export default function Home() {
         </motion.div>
       </section>
 
-      {/* Features Section */}
       <section className="px-6 py-8 pb-24 max-w-[1000px] mx-auto">
         <motion.h2
           className="font-mono text-[1.6rem] text-[var(--text-muted)] text-center mb-12 tracking-[0.05em]"
@@ -276,7 +268,6 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Footer */}
       <footer className="border-t border-[var(--border-color)] py-10 px-6 transition-colors duration-300">
         <div className="max-w-[1000px] mx-auto flex flex-col items-center gap-3">
           <div className="flex items-center gap-2 font-mono text-[1.3rem] text-[var(--accent)]">
@@ -303,7 +294,6 @@ export default function Home() {
   );
 }
 
-// Extracted to avoid inline style objects inside .map() callback
 function FeatureCard({
   feature,
   delay,

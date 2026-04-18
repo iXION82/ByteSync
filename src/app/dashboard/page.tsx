@@ -34,7 +34,6 @@ export default function DashboardPage() {
     if (!user) return;
     setIsLoadingRooms(true);
     try {
-      // Ensure user is synced to MongoDB
       await ensureUserInDb(user);
 
       const res = await fetch(`${SERVER_URL}/api/users/${user.id}/rooms`);
@@ -103,11 +102,9 @@ export default function DashboardPage() {
         className="max-w-[900px] mx-auto flex flex-col gap-5"
         style={{ animation: "fadeInUp 0.5s ease" }}
       >
-        {/* Welcome Card */}
         <div className="bg-[var(--bg-card)] border border-[var(--border-color)] rounded-[var(--radius-lg)] transition-all duration-200 hover:bg-[var(--bg-card-hover)] flex flex-col sm:flex-row items-center gap-6 p-8 text-center sm:text-left">
           <div className="shrink-0">
             {user.imageUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={user.imageUrl}
                 alt={user.fullName || "Avatar"}
@@ -177,7 +174,6 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Quick Stats */}
         <div className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-4">
           <div className="bg-[var(--bg-card)] border border-[var(--border-color)] rounded-[var(--radius-lg)] py-6 px-8 transition-all duration-200 hover:bg-[var(--bg-card-hover)] flex items-center gap-4">
             <div
@@ -274,7 +270,6 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Your Rooms Section */}
         <div className="bg-[var(--bg-card)] border border-[var(--border-color)] rounded-[var(--radius-lg)] p-8 transition-all duration-200">
           <h2 className="text-base font-bold mb-5 tracking-[-0.01em] flex items-center gap-2">
             <svg
@@ -322,7 +317,6 @@ export default function DashboardPage() {
             </div>
           ) : (
             <div className="flex flex-col gap-3">
-              {/* Created Rooms */}
               {createdRooms.length > 0 && (
                 <>
                   <p className="text-[0.7rem] text-[var(--text-muted)] uppercase tracking-wider font-semibold mt-1">
@@ -341,7 +335,6 @@ export default function DashboardPage() {
                 </>
               )}
 
-              {/* Joined Rooms */}
               {joinedRooms.length > 0 && (
                 <>
                   <p className="text-[0.7rem] text-[var(--text-muted)] uppercase tracking-wider font-semibold mt-4">
@@ -363,7 +356,6 @@ export default function DashboardPage() {
           )}
         </div>
 
-        {/* Sign Out Button */}
         <button
           onClick={() => signOut(() => router.push("/"))}
           className="flex items-center justify-center gap-2 w-full p-[0.85rem] bg-[rgba(239,68,68,0.08)] border border-[rgba(239,68,68,0.15)] text-[#f87171] rounded-[var(--radius)] text-[0.9rem] font-semibold font-inherit cursor-pointer transition-all duration-200 hover:bg-[rgba(239,68,68,0.15)] hover:border-[rgba(239,68,68,0.3)] hover:-translate-y-[1px]"
@@ -387,7 +379,6 @@ export default function DashboardPage() {
   );
 }
 
-// ─── Room Card Component ────────────────────────────────────────
 function RoomCard({
   room,
   activeRoomId,
@@ -417,14 +408,12 @@ function RoomCard({
       }}
     >
       <div className="flex items-center gap-4 min-w-0">
-        {/* Room Code Badge */}
         <div className="shrink-0 font-mono text-sm font-bold tracking-[0.15em] text-[var(--accent)] bg-[var(--bg-secondary)] border border-[var(--border-color)] px-3 py-1.5 rounded-lg">
           {room.roomCode}
         </div>
 
         <div className="min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            {/* Relationship badge */}
             <span
               className="text-[0.65rem] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full"
               style={{
@@ -439,7 +428,6 @@ function RoomCard({
               {room.relationship === "owner" ? "Owner" : "Member"}
             </span>
 
-            {/* Active badge */}
             {room.isActive ? (
               <span className="text-[0.65rem] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-[rgba(0,255,136,0.1)] text-[var(--accent-success)]">
                 Active
@@ -450,7 +438,6 @@ function RoomCard({
               </span>
             )}
 
-            {/* Language */}
             <span className="text-[0.7rem] text-[var(--text-muted)]">
               {langLabel}
             </span>
@@ -466,7 +453,6 @@ function RoomCard({
         </div>
       </div>
 
-      {/* Actions */}
       <div className="flex items-center gap-2 shrink-0">
         {room.isActive && (
           <button

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useParams } from "next/navigation";
+import { motion, AnimatePresence } from "framer-motion";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 
@@ -36,13 +37,47 @@ interface Snapshot {
   trigger: string;
 }
 
-const TRIGGER_META: Record<string, { label: string; icon: string; color: string }> = {
-  auto:             { label: "Auto-save",        icon: "💾", color: "#6366f1" },
-  manual:           { label: "Manual Save",      icon: "📌", color: "#22c55e" },
-  join:             { label: "User Joined",      icon: "👤", color: "#3b82f6" },
-  leave:            { label: "User Left",        icon: "👋", color: "#ef4444" },
-  "file-change":    { label: "File Changed",     icon: "📄", color: "#f59e0b" },
-  "language-change":{ label: "Language Changed",  icon: "🔤", color: "#8b5cf6" },
+const TRIGGER_META: Record<string, { label: string; badge: string; color: string }> = {
+  auto:             { label: "Auto-save",        badge: "AUTO", color: "#6366f1" },
+  manual:           { label: "Manual Save",      badge: "SAVE", color: "#22c55e" },
+  join:             { label: "User Joined",      badge: "JOIN", color: "#3b82f6" },
+  leave:            { label: "User Left",        badge: "LEFT", color: "#ef4444" },
+  "file-change":    { label: "File Changed",     badge: "FILE", color: "#f59e0b" },
+  "language-change":{ label: "Language Changed",  badge: "LANG", color: "#8b5cf6" },
+};
+
+// ─── Animation Variants ─────────────────────────────────────────
+
+// 1. Staggered snapshot entrance — each item slides in from left
+const listContainerVariants = {
+  hidden: {},
+  show: {
+    transition: {
+      staggerChildren: 0.04,
+      delayChildren: 0.1,
+    },
+  },
+};
+
+const listItemVariants = {
+  hidden: { opacity: 0, x: -24, scale: 0.96 },
+  show: {
+    opacity: 1,
+    x: 0,
+    scale: 1,
+    transition: {
+      type: "spring" as const,
+      stiffness: 400,
+      damping: 28,
+    },
+  },
+};
+
+// 3. Editor crossfade
+const editorFadeVariants = {
+  initial: { opacity: 0 },
+  animate: { opacity: 1, transition: { duration: 0.25, ease: "easeOut" as const } },
+  exit: { opacity: 0, transition: { duration: 0.15, ease: "easeIn" as const } },
 };
 
 // ─── Page ───────────────────────────────────────────────────────
@@ -57,9 +92,10 @@ export default function ReplayPage() {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  // Currently viewed file within a snapshot
   const [viewingFile, setViewingFile] = useState("");
+
+  // Track whether the editor is transitioning (crossfade)
+  const [editorKey, setEditorKey] = useState(0);
 
   const editorRef = useRef<{ setRemoteCode: (code: string) => void } | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -76,7 +112,7 @@ export default function ReplayPage() {
         const snaps: Snapshot[] = data.snapshots;
         setSnapshots(snaps);
         if (snaps.length > 0) {
-          setSelectedIndex(snaps.length - 1); // start at latest
+          setSelectedIndex(snaps.length - 1);
           setViewingFile(snaps[snaps.length - 1].activeFile || snaps[snaps.length - 1].files[0]?.filename || "");
         }
       } catch (err) {
@@ -87,17 +123,22 @@ export default function ReplayPage() {
     })();
   }, [roomId]);
 
-  // ─── Update editor when selection changes ─────────────────────
+  // ─── Update editor + trigger crossfade when selection changes ──
   const selected = snapshots[selectedIndex];
 
   useEffect(() => {
     if (!selected) return;
     const file = selected.files.find(f => f.filename === viewingFile) || selected.files[0];
     if (file) {
-      editorRef.current?.setRemoteCode(file.content);
-      if (file.filename !== viewingFile) setViewingFile(file.filename);
+      // Trigger the crossfade by bumping the key
+      setEditorKey(k => k + 1);
+      // Small delay to let fade-out happen, then push new code
+      setTimeout(() => {
+        editorRef.current?.setRemoteCode(file.content);
+        if (file.filename !== viewingFile) setViewingFile(file.filename);
+      }, 50);
     }
-  }, [selectedIndex, selected, viewingFile]);
+  }, [selectedIndex, selected]);
 
   // ─── Scroll the active item into view ─────────────────────────
   useEffect(() => {
@@ -122,10 +163,7 @@ export default function ReplayPage() {
   }, [snapshots.length]);
 
   // ─── Helpers ──────────────────────────────────────────────────
-  const formatTime = (ts: string) => {
-    const d = new Date(ts);
-    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-  };
+  const formatTime = (ts: string) => new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
   const formatDate = (ts: string) => {
     const d = new Date(ts);
     return d.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
@@ -136,7 +174,10 @@ export default function ReplayPage() {
   return (
     <div className="flex flex-col h-screen bg-background overflow-hidden pt-16" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>
       {/* ─── Header ───────────────────────────────────────────── */}
-      <div
+      <motion.div
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, ease: "easeOut" }}
         className="flex items-center justify-between px-5 h-12 min-h-12 border-b border-(--border-color) z-20"
         style={{ background: "var(--bg-secondary)" }}
       >
@@ -168,32 +209,36 @@ export default function ReplayPage() {
             </>
           )}
         </div>
-      </div>
+      </motion.div>
 
       {/* ─── Main ─────────────────────────────────────────────── */}
       {loading ? (
         <div className="flex-1 flex items-center justify-center">
-          <div className="text-center">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="text-center"
+          >
             <div className="text-(--accent) text-sm mb-2" style={{ animation: "pulse-glow 1.5s infinite" }}>Loading snapshots...</div>
-            <span className="text-(--accent)" style={{ animation: "blink 1s step-end infinite" }}>█</span>
-          </div>
+            <span className="text-(--accent)" style={{ animation: "blink 1s step-end infinite" }}>_</span>
+          </motion.div>
         </div>
       ) : error ? (
         <div className="flex-1 flex items-center justify-center">
-          <div className="text-center max-w-md">
-            <div className="text-5xl mb-4">⏪</div>
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-center max-w-md">
+            <div className="text-3xl mb-4 text-(--text-muted) font-bold">:/</div>
             <p className="text-(--text-muted) text-sm mb-4">{error}</p>
             <Link href={`/room/session/${roomId}`} className="text-(--accent) text-xs hover:underline no-underline">← Back to session</Link>
-          </div>
+          </motion.div>
         </div>
       ) : snapshots.length === 0 ? (
         <div className="flex-1 flex items-center justify-center">
-          <div className="text-center max-w-md">
-            <div className="text-5xl mb-4">📸</div>
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-center max-w-md">
+            <div className="text-3xl mb-4 text-(--text-muted) font-bold">[  ]</div>
             <p className="text-(--text-primary) text-base font-semibold mb-2">No Snapshots Yet</p>
             <p className="text-(--text-muted) text-xs mb-4">Start coding in the session room. Snapshots are automatically captured every 3 minutes, on saves, and when users join or leave.</p>
             <Link href={`/room/session/${roomId}`} className="text-(--accent) text-xs hover:underline no-underline">← Back to session</Link>
-          </div>
+          </motion.div>
         </div>
       ) : (
         <div className="flex flex-1 overflow-hidden">
@@ -207,7 +252,7 @@ export default function ReplayPage() {
               <button
                 onClick={() => setSelectedIndex(i => Math.max(0, i - 1))}
                 disabled={selectedIndex === 0}
-                className="bg-transparent border border-(--border-color) text-(--text-muted) px-2.5 py-1 rounded text-[0.65rem] cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed transition-all hover:border-(--accent) hover:text-(--accent)"
+                className="bg-transparent border border-(--border-color) text-(--text-muted) px-2.5 py-1 rounded text-[0.65rem] cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed transition-all hover:border-(--accent) hover:text-(--accent) active:scale-95"
               >
                 ▲ Prev
               </button>
@@ -217,24 +262,33 @@ export default function ReplayPage() {
               <button
                 onClick={() => setSelectedIndex(i => Math.min(snapshots.length - 1, i + 1))}
                 disabled={selectedIndex >= snapshots.length - 1}
-                className="bg-transparent border border-(--border-color) text-(--text-muted) px-2.5 py-1 rounded text-[0.65rem] cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed transition-all hover:border-(--accent) hover:text-(--accent)"
+                className="bg-transparent border border-(--border-color) text-(--text-muted) px-2.5 py-1 rounded text-[0.65rem] cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed transition-all hover:border-(--accent) hover:text-(--accent) active:scale-95"
               >
                 Next ▼
               </button>
             </div>
 
-            {/* Scrollable list */}
-            <div ref={listRef} className="flex-1 overflow-y-auto py-1">
+            {/* ── Animation 1: Staggered snapshot list ─────────── */}
+            <motion.div
+              ref={listRef}
+              className="flex-1 overflow-y-auto py-1"
+              variants={listContainerVariants}
+              initial="hidden"
+              animate="show"
+            >
               {snapshots.map((snap, i) => {
-                const meta = TRIGGER_META[snap.trigger] || { label: snap.trigger, icon: "📸", color: "#9ca3af" };
+                const meta = TRIGGER_META[snap.trigger] || { label: snap.trigger, badge: "--", color: "#9ca3af" };
                 const isActive = i === selectedIndex;
 
                 return (
-                  <button
+                  <motion.button
                     key={snap._id}
                     data-idx={i}
+                    variants={listItemVariants}
                     onClick={() => setSelectedIndex(i)}
-                    className="w-full text-left border-none cursor-pointer transition-all"
+                    className="w-full text-left border-none cursor-pointer"
+                    whileHover={!isActive ? { backgroundColor: "var(--bg-card)" } : {}}
+                    whileTap={{ scale: 0.98 }}
                     style={{
                       display: "flex",
                       flexDirection: "column",
@@ -242,18 +296,31 @@ export default function ReplayPage() {
                       padding: "0.5rem 0.75rem",
                       background: isActive ? "rgba(0,255,65,0.06)" : "transparent",
                       borderLeft: isActive ? "3px solid var(--accent)" : "3px solid transparent",
+                      // 2. Active glow pulse — CSS animation applied via boxShadow
+                      boxShadow: isActive ? "inset 0 0 20px rgba(0,255,65,0.05)" : "none",
+                      transition: "border-left 0.2s ease, box-shadow 0.3s ease",
                     }}
-                    onMouseEnter={(e) => {
-                      if (!isActive) e.currentTarget.style.background = "var(--bg-card)";
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!isActive) e.currentTarget.style.background = "transparent";
-                    }}
+                    animate={isActive ? {
+                      // 2. Subtle breathing glow for active item
+                      boxShadow: [
+                        "inset 0 0 12px rgba(0,255,65,0.04)",
+                        "inset 0 0 24px rgba(0,255,65,0.08)",
+                        "inset 0 0 12px rgba(0,255,65,0.04)",
+                      ],
+                    } : {}}
+                    transition={isActive ? {
+                      boxShadow: { duration: 2, repeat: Infinity, ease: "easeInOut" },
+                    } : { type: "spring", stiffness: 400, damping: 28 }}
                   >
                     {/* Top row: icon + trigger label + time */}
                     <div className="flex items-center justify-between w-full">
                       <div className="flex items-center gap-1.5">
-                        <span style={{ fontSize: "0.75rem" }}>{meta.icon}</span>
+                        <span
+                          className="text-[0.5rem] font-bold px-1 py-[1px] rounded"
+                          style={{ color: meta.color, background: `${meta.color}18` }}
+                        >
+                          {meta.badge}
+                        </span>
                         <span
                           className="text-[0.65rem] font-semibold"
                           style={{ color: isActive ? "var(--accent)" : meta.color }}
@@ -275,10 +342,10 @@ export default function ReplayPage() {
                       <span>{snap.files.length} file{snap.files.length !== 1 ? "s" : ""}</span>
                       <span>seq #{snap.seq}</span>
                     </div>
-                  </button>
+                  </motion.button>
                 );
               })}
-            </div>
+            </motion.div>
           </div>
 
           {/* ─── Right Side: File Tabs + Editor ───────────────── */}
@@ -296,7 +363,8 @@ export default function ReplayPage() {
                       key={file.filename}
                       onClick={() => {
                         setViewingFile(file.filename);
-                        editorRef.current?.setRemoteCode(file.content);
+                        setEditorKey(k => k + 1);
+                        setTimeout(() => editorRef.current?.setRemoteCode(file.content), 50);
                       }}
                       className="border-none cursor-pointer transition-all whitespace-nowrap"
                       style={{
@@ -328,15 +396,26 @@ export default function ReplayPage() {
               </div>
             )}
 
-            {/* Monaco editor */}
-            <div className="flex-1 min-w-0 overflow-hidden">
-              <CodeEditor
-                ref={editorRef as any}
-                language={currentFile?.language || "javascript"}
-                initialValue={currentFile?.content || ""}
-                onChange={() => {}}
-                onCursorChange={() => {}}
-              />
+            {/* ── Animation 3: Editor crossfade ───────────────── */}
+            <div className="flex-1 min-w-0 overflow-hidden relative">
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={editorKey}
+                  variants={editorFadeVariants}
+                  initial="initial"
+                  animate="animate"
+                  exit="exit"
+                  className="absolute inset-0"
+                >
+                  <CodeEditor
+                    ref={editorRef as any}
+                    language={currentFile?.language || "javascript"}
+                    initialValue={currentFile?.content || ""}
+                    onChange={() => {}}
+                    onCursorChange={() => {}}
+                  />
+                </motion.div>
+              </AnimatePresence>
             </div>
           </div>
         </div>
