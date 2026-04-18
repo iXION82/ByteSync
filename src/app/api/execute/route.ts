@@ -1,19 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 
-// Judge0 CE public API (no auth required for basic usage)
 const JUDGE0_API = "https://judge0-ce.p.rapidapi.com";
 
-// Language ID mapping for Judge0 CE
-// Full list: https://ce.judge0.com/languages
 const LANGUAGE_MAP: Record<string, number> = {
-  javascript: 63,  // JavaScript (Node.js 12.14.0)
-  python: 71,      // Python (3.8.1)
-  typescript: 74,  // TypeScript (3.7.4)
-  "c++": 54,       // C++ (GCC 9.2.0)
-  java: 62,        // Java (OpenJDK 13.0.1)
-  go: 60,          // Go (1.13.5)
-  rust: 73,        // Rust (1.40.0)
-  c: 50,           // C (GCC 9.2.0)
+  javascript: 63,
+  python: 71,
+  typescript: 74,
+  "c++": 54,
+  java: 62,
+  go: 60,
+  rust: 73,
+  c: 50,
 };
 
 export async function POST(req: NextRequest) {
@@ -36,13 +33,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Try Piston first (self-hosted / public instances)
     const pistonResult = await tryPiston(language, code, stdin);
     if (pistonResult) {
       return NextResponse.json(pistonResult);
     }
 
-    // Fallback: try Judge0 CE direct (no RapidAPI key needed for some instances)
     const judge0Result = await tryJudge0Direct(languageId, code, stdin);
     if (judge0Result) {
       return NextResponse.json(judge0Result);
@@ -61,7 +56,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// ─── Piston Engine ─────────────────────────────────────────────
+
 const PISTON_VERSIONS: Record<string, string> = {
   javascript: "18.15.0",
   python: "3.10.0",
@@ -74,7 +69,6 @@ const PISTON_VERSIONS: Record<string, string> = {
 };
 
 async function tryPiston(language: string, code: string, stdin?: string) {
-  // Try multiple Piston public instances
   const pistonUrls = [
     "https://emkc.org/api/v2/piston/execute",
     "https://piston.pn.studio/api/v2/execute",
@@ -111,14 +105,13 @@ async function tryPiston(language: string, code: string, stdin?: string) {
         }
       }
     } catch {
-      // Try next URL
       continue;
     }
   }
   return null;
 }
 
-// ─── Judge0 CE Engine ──────────────────────────────────────────
+
 async function tryJudge0Direct(languageId: number, code: string, stdin?: string) {
   const judge0Urls = [
     "https://judge0-ce.p.sulu.sh",
@@ -130,7 +123,6 @@ async function tryJudge0Direct(languageId: number, code: string, stdin?: string)
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 15000);
 
-      // Submit with wait=true to get result immediately
       const response = await fetch(`${baseUrl}/submissions?base64_encoded=false&wait=true`, {
         method: "POST",
         headers: {

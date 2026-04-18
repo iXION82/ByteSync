@@ -1,7 +1,6 @@
 import { ObjectId, type WithId } from "mongodb";
 import { getDatabase } from "../db.js";
 
-// ─── Chat Document Interface ────────────────────────────────────
 export interface ChatDocument {
   roomId: ObjectId;
   senderId: ObjectId;
@@ -9,7 +8,6 @@ export interface ChatDocument {
   createdAt: Date;
 }
 
-// ─── Collection Helper ──────────────────────────────────────────
 let indexesEnsured = false;
 
 async function getChatsCollection() {
@@ -24,8 +22,6 @@ async function getChatsCollection() {
 
   return collection;
 }
-
-// ─── CRUD Functions ────────────────────────────────────────────
 
 export async function createChatMessage(
   data: Omit<ChatDocument, "createdAt">

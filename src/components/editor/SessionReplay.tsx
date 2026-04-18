@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
-// ─── Types ──────────────────────────────────────────────────────
 
 interface SnapshotFile {
   filename: string;
@@ -66,7 +65,6 @@ const TRIGGER_ICONS: Record<string, string> = {
   "language-change": "🔤",
 };
 
-// ─── Component ──────────────────────────────────────────────────
 
 export default function SessionReplay({ roomId, isOpen, onClose, onApplyState }: SessionReplayProps) {
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
@@ -80,7 +78,6 @@ export default function SessionReplay({ roomId, isOpen, onClose, onApplyState }:
   const [previewFile, setPreviewFile] = useState("");
   const playTimer = useRef<NodeJS.Timeout | null>(null);
 
-  // ─── Load replay data ─────────────────────────────────────────
   useEffect(() => {
     if (!isOpen || !roomId) return;
 
@@ -89,7 +86,6 @@ export default function SessionReplay({ roomId, isOpen, onClose, onApplyState }:
       setError(null);
 
       try {
-        // Fetch all snapshots
         const snapRes = await fetch(`${SERVER_URL}/api/rooms/${roomId}/replay/snapshots`);
         if (!snapRes.ok) throw new Error("Failed to fetch snapshots");
         const snapData = await snapRes.json();
@@ -102,7 +98,6 @@ export default function SessionReplay({ roomId, isOpen, onClose, onApplyState }:
           return;
         }
 
-        // Build unified timeline from snapshots + edit events
         const entries: ReplayEntry[] = [];
 
         for (const snap of snaps) {
@@ -114,7 +109,6 @@ export default function SessionReplay({ roomId, isOpen, onClose, onApplyState }:
           });
         }
 
-        // Fetch edit events for the latest span (between first and last snapshot)
         if (snaps.length > 0) {
           const eventsRes = await fetch(`${SERVER_URL}/api/rooms/${roomId}/replay/events?afterSeq=0&limit=5000`);
           if (eventsRes.ok) {
@@ -132,12 +126,10 @@ export default function SessionReplay({ roomId, isOpen, onClose, onApplyState }:
           }
         }
 
-        // Sort by timestamp
         entries.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
         setTimeline(entries);
         setCurrentIndex(0);
 
-        // Set initial preview
         if (entries.length > 0) {
           applyEntry(entries[0]);
         }
@@ -151,7 +143,6 @@ export default function SessionReplay({ roomId, isOpen, onClose, onApplyState }:
     loadReplayData();
   }, [isOpen, roomId]);
 
-  // ─── Apply an entry to the preview ────────────────────────────
   const applyEntry = useCallback((entry: ReplayEntry) => {
     if (entry.type === "snapshot" && entry.snapshot) {
       const file = entry.snapshot.files.find(f => f.filename === entry.snapshot!.activeFile) || entry.snapshot.files[0];
@@ -165,7 +156,6 @@ export default function SessionReplay({ roomId, isOpen, onClose, onApplyState }:
     }
   }, []);
 
-  // ─── Playback controls ────────────────────────────────────────
   const play = useCallback(() => {
     if (currentIndex >= timeline.length - 1) {
       setCurrentIndex(0);
@@ -203,7 +193,6 @@ export default function SessionReplay({ roomId, isOpen, onClose, onApplyState }:
     applyEntry(timeline[clamped]);
   }, [timeline, applyEntry]);
 
-  // ─── Auto-play loop ───────────────────────────────────────────
   useEffect(() => {
     if (!isPlaying) return;
 
@@ -212,11 +201,9 @@ export default function SessionReplay({ roomId, isOpen, onClose, onApplyState }:
       return;
     }
 
-    // Calculate delay between entries based on real time, clamped to useful range
     const current = timeline[currentIndex];
     const next = timeline[currentIndex + 1];
     const realDeltaMs = next.timestamp.getTime() - current.timestamp.getTime();
-    // Clamp: min 50ms, max 2000ms, scaled by play speed
     const delay = Math.max(50, Math.min(2000, realDeltaMs)) / playSpeed;
 
     playTimer.current = setTimeout(() => {
@@ -232,7 +219,6 @@ export default function SessionReplay({ roomId, isOpen, onClose, onApplyState }:
     };
   }, [isPlaying, currentIndex, timeline, playSpeed, applyEntry]);
 
-  // ─── Format timestamp for display ─────────────────────────────
   const formatTime = (date: Date) => {
     return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
   };
@@ -285,7 +271,6 @@ export default function SessionReplay({ roomId, isOpen, onClose, onApplyState }:
             boxShadow: "0 8px 40px rgba(0,0,0,0.4), 0 0 20px var(--accent-glow)",
           }}
         >
-          {/* Header */}
           <div
             style={{
               display: "flex",
@@ -326,7 +311,6 @@ export default function SessionReplay({ roomId, isOpen, onClose, onApplyState }:
             </button>
           </div>
 
-          {/* Content */}
           {loading ? (
             <div style={{ padding: "2rem", textAlign: "center", color: "var(--text-muted)", fontSize: "0.75rem" }}>
               <span style={{ color: "var(--accent)", animation: "blink 1s step-end infinite" }}>█</span> Loading replay data...
@@ -341,7 +325,6 @@ export default function SessionReplay({ roomId, isOpen, onClose, onApplyState }:
             </div>
           ) : (
             <>
-              {/* Code Preview */}
               <div style={{ padding: "0.6rem 1rem", borderBottom: "1px solid var(--border-color)", maxHeight: "200px", overflowY: "auto" }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.4rem" }}>
                   <span style={{ fontSize: "0.6rem", color: "var(--accent)", fontWeight: 600 }}>
@@ -367,9 +350,7 @@ export default function SessionReplay({ roomId, isOpen, onClose, onApplyState }:
                 </pre>
               </div>
 
-              {/* Timeline Slider */}
               <div style={{ padding: "0.6rem 1rem" }}>
-                {/* Slider Track */}
                 <div style={{ position: "relative", marginBottom: "0.3rem" }}>
                   <input
                     type="range"
@@ -387,7 +368,6 @@ export default function SessionReplay({ roomId, isOpen, onClose, onApplyState }:
                       cursor: "pointer",
                     }}
                   />
-                  {/* Snapshot markers on the track */}
                   <div style={{ position: "absolute", top: "0", left: "0", right: "0", height: "6px", pointerEvents: "none" }}>
                     {snapshotMarkers.map((idx) => (
                       <div
@@ -407,16 +387,13 @@ export default function SessionReplay({ roomId, isOpen, onClose, onApplyState }:
                   </div>
                 </div>
 
-                {/* Time labels */}
                 <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.55rem", color: "var(--text-muted)", marginBottom: "0.5rem" }}>
                   <span>{formatDuration(currentPosition)}</span>
                   <span>{currentEntry?.label}</span>
                   <span>{formatDuration(totalDuration)}</span>
                 </div>
 
-                {/* Controls */}
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem" }}>
-                  {/* Step back */}
                   <button
                     onClick={stepBack}
                     disabled={currentIndex === 0}
@@ -435,7 +412,6 @@ export default function SessionReplay({ roomId, isOpen, onClose, onApplyState }:
                     ⏮
                   </button>
 
-                  {/* Play/Pause */}
                   <button
                     onClick={isPlaying ? pause : play}
                     style={{
@@ -454,7 +430,6 @@ export default function SessionReplay({ roomId, isOpen, onClose, onApplyState }:
                     {isPlaying ? "⏸ Pause" : "▶ Play"}
                   </button>
 
-                  {/* Step forward */}
                   <button
                     onClick={stepForward}
                     disabled={currentIndex >= timeline.length - 1}
@@ -473,10 +448,8 @@ export default function SessionReplay({ roomId, isOpen, onClose, onApplyState }:
                     ⏭
                   </button>
 
-                  {/* Divider */}
                   <div style={{ width: "1px", height: "16px", background: "var(--border-color)", margin: "0 0.3rem" }} />
 
-                  {/* Speed selector */}
                   <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
                     {[0.5, 1, 2, 4].map((speed) => (
                       <button
@@ -499,10 +472,8 @@ export default function SessionReplay({ roomId, isOpen, onClose, onApplyState }:
                     ))}
                   </div>
 
-                  {/* Divider */}
                   <div style={{ width: "1px", height: "16px", background: "var(--border-color)", margin: "0 0.3rem" }} />
 
-                  {/* Apply to editor */}
                   <button
                     onClick={() => {
                       if (currentEntry?.type === "snapshot" && currentEntry.snapshot) {

@@ -2,36 +2,31 @@ import { ObjectId, type WithId } from "mongodb";
 import { getDatabase } from "@/lib/mongodb";
 import crypto from "crypto";
 
-// ─── Room Document Interface ────────────────────────────────────
 export interface AllowedUser {
   userId: ObjectId;
   role: "editor" | "viewer";
 }
 
-/**
- * Represents a single file inside a room's mini-project.
- */
 export interface RoomFile {
-  filename: string;    // e.g. "main.js", "utils.py"
-  content: string;     // file content
-  language: string;    // Monaco language id (e.g. "javascript", "python")
+  filename: string;
+  content: string;
+  language: string;
 }
 
 export interface RoomDocument {
   ownerId: ObjectId;
-  roomCode: string;            // unique, 8 alphanumeric chars
-  passwordHash: string;        // hashed room password
-  codeLanguage: string;        // language ID matching editorConstants (backward compat)
-  code: string;                // active file content mirror (backward compat)
-  files: RoomFile[];           // all project files (max 10)
-  activeFile: string;          // filename of the currently active file
-  allowedUsers: AllowedUser[]; // max 5 (besides owner)
+  roomCode: string;
+  passwordHash: string;
+  codeLanguage: string;
+  code: string;
+  files: RoomFile[];
+  activeFile: string;
+  allowedUsers: AllowedUser[];
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
 
-// ─── Collection Helper ──────────────────────────────────────────
 let indexesEnsured = false;
 
 async function getRoomsCollection() {
@@ -48,13 +43,8 @@ async function getRoomsCollection() {
   return collection;
 }
 
-// ─── Helpers ────────────────────────────────────────────────────
-
-/**
- * Generate a unique 8-character alphanumeric room code
- */
 export function generateRoomCode(): string {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no 0/O/1/I to avoid confusion
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let code = "";
   const bytes = crypto.randomBytes(8);
   for (let i = 0; i < 8; i++) {
@@ -63,18 +53,12 @@ export function generateRoomCode(): string {
   return code;
 }
 
-// ─── CRUD Functions ────────────────────────────────────────────
-
-/**
- * Create a new room
- */
 export async function createRoom(
   data: Pick<RoomDocument, "ownerId" | "passwordHash" | "codeLanguage" | "code"> & { filename?: string }
 ): Promise<WithId<RoomDocument>> {
   const collection = await getRoomsCollection();
   const now = new Date();
 
-  // Generate unique room code (retry on collision)
   let roomCode = generateRoomCode();
   let attempts = 0;
   while (attempts < 5) {
@@ -84,8 +68,7 @@ export async function createRoom(
     attempts++;
   }
 
-  // Default filename based on language (e.g. "main.js")
-  const defaultFilename = data.filename || `main.${getExtensionForLanguage(data.codeLanguage)}`;
+    const defaultFilename = data.filename || `main.${getExtensionForLanguage(data.codeLanguage)}`;
 
   const doc: RoomDocument = {
     ownerId: data.ownerId,
@@ -111,9 +94,6 @@ export async function createRoom(
   return { _id: result.insertedId, ...doc };
 }
 
-/**
- * Find a room by its unique room code
- */
 export async function findRoomByCode(
   roomCode: string
 ): Promise<WithId<RoomDocument> | null> {
@@ -121,9 +101,6 @@ export async function findRoomByCode(
   return collection.findOne({ roomCode, isActive: true });
 }
 
-/**
- * Find a room by its MongoDB _id
- */
 export async function findRoomById(
   id: string
 ): Promise<WithId<RoomDocument> | null> {
@@ -131,9 +108,6 @@ export async function findRoomById(
   return collection.findOne({ _id: new ObjectId(id) });
 }
 
-/**
- * Find all rooms owned by a user
- */
 export async function findRoomsByOwner(
   ownerId: string
 ): Promise<WithId<RoomDocument>[]> {
@@ -144,9 +118,6 @@ export async function findRoomsByOwner(
     .toArray();
 }
 
-/**
- * Add a user to a room's allowed list (max 5 besides owner)
- */
 export async function addUserToRoom(
   roomId: string,
   userId: ObjectId,
@@ -159,7 +130,7 @@ export async function addUserToRoom(
       _id: new ObjectId(roomId),
       isActive: true,
       $expr: { $lt: [{ $size: "$allowedUsers" }, 5] },
-      "allowedUsers.userId": { $ne: userId }, // prevent duplicates
+      "allowedUsers.userId": { $ne: userId },
     },
     {
       $push: { allowedUsers: { userId, role } },
@@ -170,9 +141,6 @@ export async function addUserToRoom(
   return result;
 }
 
-/**
- * Remove a user from a room's allowed list
- */
 export async function removeUserFromRoom(
   roomId: string,
   userId: ObjectId
@@ -190,10 +158,6 @@ export async function removeUserFromRoom(
   return result;
 }
 
-/**
- * Update the code content of a room (backward compat — updates the `code` field
- * and also syncs the matching file in the `files` array if present).
- */
 export async function updateRoomCode(
   roomId: string,
   code: string,
@@ -209,14 +173,12 @@ export async function updateRoomCode(
     updateFields.codeLanguage = codeLanguage;
   }
 
-  // First update the top-level code field
   const result = await collection.findOneAndUpdate(
     { _id: new ObjectId(roomId) },
     { $set: updateFields },
     { returnDocument: "after" }
   );
 
-  // Also sync the active file's content in the files array
   if (result?.activeFile) {
     await collection.updateOne(
       { _id: new ObjectId(roomId), "files.filename": result.activeFile },
@@ -227,11 +189,6 @@ export async function updateRoomCode(
   return result;
 }
 
-// ─── Multi-File CRUD Functions ─────────────────────────────────
-
-/**
- * Update a specific file's content in a room.
- */
 export async function updateFileContent(
   roomId: string,
   filename: string,
@@ -251,9 +208,6 @@ export async function updateFileContent(
   return result;
 }
 
-/**
- * Add a new file to a room (max 10 files).
- */
 export async function addFileToRoom(
   roomId: string,
   file: RoomFile
@@ -262,8 +216,8 @@ export async function addFileToRoom(
   const result = await collection.findOneAndUpdate(
     {
       _id: new ObjectId(roomId),
-      "files.filename": { $ne: file.filename }, // prevent duplicate filenames
-      $expr: { $lt: [{ $size: "$files" }, 10] }, // max 10 files
+      "files.filename": { $ne: file.filename },
+      $expr: { $lt: [{ $size: "$files" }, 10] },
     },
     {
       $push: { files: file },
@@ -274,10 +228,6 @@ export async function addFileToRoom(
   return result;
 }
 
-/**
- * Remove a file from a room by filename.
- * Cannot remove the last file.
- */
 export async function removeFileFromRoom(
   roomId: string,
   filename: string
@@ -286,7 +236,7 @@ export async function removeFileFromRoom(
   const result = await collection.findOneAndUpdate(
     {
       _id: new ObjectId(roomId),
-      $expr: { $gt: [{ $size: "$files" }, 1] }, // keep at least 1 file
+      $expr: { $gt: [{ $size: "$files" }, 1] },
     },
     {
       $pull: { files: { filename } },
@@ -297,9 +247,6 @@ export async function removeFileFromRoom(
   return result;
 }
 
-/**
- * Rename a file in a room.
- */
 export async function renameFileInRoom(
   roomId: string,
   oldFilename: string,
@@ -322,16 +269,12 @@ export async function renameFileInRoom(
   return result;
 }
 
-/**
- * Set the active file for a room.
- */
 export async function setActiveFile(
   roomId: string,
   filename: string
 ): Promise<WithId<RoomDocument> | null> {
   const collection = await getRoomsCollection();
 
-  // Find the file to get its content and language
   const room = await collection.findOne({ _id: new ObjectId(roomId) });
   const file = room?.files?.find(f => f.filename === filename);
 
@@ -340,7 +283,6 @@ export async function setActiveFile(
     {
       $set: {
         activeFile: filename,
-        // Sync top-level code/codeLanguage fields for backward compat
         ...(file ? { code: file.content, codeLanguage: file.language } : {}),
         updatedAt: new Date(),
       },
@@ -350,9 +292,6 @@ export async function setActiveFile(
   return result;
 }
 
-/**
- * Soft-delete a room by setting isActive to false
- */
 export async function deactivateRoom(
   roomId: string
 ): Promise<WithId<RoomDocument> | null> {
@@ -366,16 +305,11 @@ export async function deactivateRoom(
   return result;
 }
 
-/**
- * Permanently delete a room
- */
 export async function deleteRoom(roomId: string): Promise<boolean> {
   const collection = await getRoomsCollection();
   const result = await collection.deleteOne({ _id: new ObjectId(roomId) });
   return result.deletedCount === 1;
 }
-
-// ─── Helper: Language → File Extension ─────────────────────────
 
 const LANGUAGE_EXTENSIONS: Record<string, string> = {
   javascript: "js",
@@ -392,9 +326,6 @@ const LANGUAGE_EXTENSIONS: Record<string, string> = {
   markdown: "md",
 };
 
-/**
- * Get the file extension for a given language ID.
- */
 export function getExtensionForLanguage(language: string): string {
   return LANGUAGE_EXTENSIONS[language] || "txt";
 }

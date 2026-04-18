@@ -1,28 +1,25 @@
 import { ObjectId, type WithId, type Document } from "mongodb";
 import { getDatabase } from "@/lib/mongodb";
 
-// ─── User Document Interface ────────────────────────────────────
 export interface UserDocument {
   clerkId: string;
   username: string;
   email: string;
   name: string;
   imageUrl?: string;
-  joinedRoomIds: ObjectId[];   // max 3 rooms the user has joined
-  createdRoomIds: ObjectId[];  // max 3 rooms the user has created
-  activeRoomId: ObjectId | null;  // currently active room (one at a time)
+  joinedRoomIds: ObjectId[];
+  createdRoomIds: ObjectId[];
+  activeRoomId: ObjectId | null;
   createdAt: Date;
   updatedAt: Date;
 }
 
-// ─── Collection Helper ──────────────────────────────────────────
 let indexesEnsured = false;
 
 async function getUsersCollection() {
   const db = await getDatabase();
   const collection = db.collection<UserDocument>("users");
 
-  // Ensure indexes exist (runs once per cold start)
   if (!indexesEnsured) {
     await collection.createIndex({ clerkId: 1 }, { unique: true });
     await collection.createIndex({ email: 1 }, { unique: true });
@@ -33,11 +30,6 @@ async function getUsersCollection() {
   return collection;
 }
 
-// ─── CRUD Functions ────────────────────────────────────────────
-
-/**
- * Create a new user in MongoDB (typically called from Clerk webhook)
- */
 export async function createUser(
   data: Omit<UserDocument, "createdAt" | "updatedAt" | "joinedRoomIds" | "createdRoomIds" | "activeRoomId">
 ): Promise<WithId<UserDocument>> {
@@ -61,9 +53,6 @@ export async function createUser(
   };
 }
 
-/**
- * Find a user by their Clerk ID
- */
 export async function findUserByClerkId(
   clerkId: string
 ): Promise<WithId<UserDocument> | null> {
@@ -71,9 +60,6 @@ export async function findUserByClerkId(
   return collection.findOne({ clerkId });
 }
 
-/**
- * Find a user by their username
- */
 export async function findUserByUsername(
   username: string
 ): Promise<WithId<UserDocument> | null> {
@@ -81,9 +67,6 @@ export async function findUserByUsername(
   return collection.findOne({ username });
 }
 
-/**
- * Find a user by their email
- */
 export async function findUserByEmail(
   email: string
 ): Promise<WithId<UserDocument> | null> {
@@ -91,9 +74,6 @@ export async function findUserByEmail(
   return collection.findOne({ email });
 }
 
-/**
- * Find a user by their MongoDB _id
- */
 export async function findUserById(
   id: string
 ): Promise<WithId<UserDocument> | null> {
@@ -101,9 +81,6 @@ export async function findUserById(
   return collection.findOne({ _id: new ObjectId(id) });
 }
 
-/**
- * Update a user by their Clerk ID
- */
 export async function updateUserByClerkId(
   clerkId: string,
   data: Partial<Omit<UserDocument, "clerkId" | "createdAt" | "updatedAt">>
@@ -117,16 +94,12 @@ export async function updateUserByClerkId(
   return result;
 }
 
-/**
- * Add a joined room ID to a user (max 3)
- */
 export async function addJoinedRoom(
   userId: string,
   roomId: ObjectId
 ): Promise<WithId<UserDocument> | null> {
   const collection = await getUsersCollection();
 
-  // Only push if user has fewer than 3 joined rooms
   const result = await collection.findOneAndUpdate(
     {
       _id: new ObjectId(userId),
@@ -141,9 +114,6 @@ export async function addJoinedRoom(
   return result;
 }
 
-/**
- * Remove a joined room ID from a user
- */
 export async function removeJoinedRoom(
   userId: string,
   roomId: ObjectId
@@ -160,9 +130,6 @@ export async function removeJoinedRoom(
   return result;
 }
 
-/**
- * Add a created room ID to a user (max 3)
- */
 export async function addCreatedRoom(
   userId: string,
   roomId: ObjectId
@@ -183,9 +150,6 @@ export async function addCreatedRoom(
   return result;
 }
 
-/**
- * Remove a created room ID from a user
- */
 export async function removeCreatedRoom(
   userId: string,
   roomId: ObjectId
@@ -202,9 +166,6 @@ export async function removeCreatedRoom(
   return result;
 }
 
-/**
- * Delete a user by their Clerk ID
- */
 export async function deleteUserByClerkId(clerkId: string): Promise<boolean> {
   const collection = await getUsersCollection();
   const result = await collection.deleteOne({ clerkId });

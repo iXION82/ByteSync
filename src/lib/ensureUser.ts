@@ -1,8 +1,3 @@
-/**
- * Ensure the current Clerk user exists in MongoDB.
- * Calls the Next.js /api/users endpoint which creates the user if they don't exist.
- * Should be called before any backend API call that requires the user to be in MongoDB.
- */
 export async function ensureUserInDb(user: {
   id: string;
   emailAddresses: { emailAddress: string }[];

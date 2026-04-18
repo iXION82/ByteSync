@@ -3,7 +3,6 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { inferLanguageFromFilename } from "@/lib/editorConstants";
 
-// ─── Types ──────────────────────────────────────────────────────
 
 export interface FileItem {
   filename: string;
@@ -21,7 +20,6 @@ interface FileTreeProps {
   onRenameFile: (oldFilename: string, newFilename: string) => void;
 }
 
-// ─── File Icon by Extension ─────────────────────────────────────
 
 const FILE_ICONS: Record<string, { icon: string; color: string }> = {
   js: { icon: "JS", color: "#f7df1e" },
@@ -47,7 +45,6 @@ function getFileIcon(filename: string) {
   return FILE_ICONS[ext] || { icon: "•", color: "var(--text-muted)" };
 }
 
-// ─── Component ──────────────────────────────────────────────────
 
 export default function FileTree({
   files,
@@ -66,17 +63,14 @@ export default function FileTree({
   const newFileInputRef = useRef<HTMLInputElement>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
 
-  // Focus input when creating
   useEffect(() => {
     if (isCreating) newFileInputRef.current?.focus();
   }, [isCreating]);
 
-  // Focus input when renaming
   useEffect(() => {
     if (renamingFile) renameInputRef.current?.focus();
   }, [renamingFile]);
 
-  // Clear delete confirmation after 3s
   useEffect(() => {
     if (!confirmDelete) return;
     const t = setTimeout(() => setConfirmDelete(null), 3000);
@@ -90,11 +84,9 @@ export default function FileTree({
       return;
     }
 
-    // Ensure it has an extension
     const hasExt = trimmed.includes(".");
     const finalName = hasExt ? trimmed : `${trimmed}.js`;
 
-    // Check for duplicates
     if (files.some((f) => f.filename === finalName)) {
       setNewFileName("");
       return;
@@ -154,7 +146,6 @@ export default function FileTree({
         fontFamily: "'IBM Plex Mono', monospace",
       }}
     >
-      {/* Header */}
       <div
         style={{
           display: "flex",
@@ -234,7 +225,6 @@ export default function FileTree({
         )}
       </div>
 
-      {/* File List */}
       <div
         style={{
           flex: 1,
@@ -276,7 +266,6 @@ export default function FileTree({
                   e.currentTarget.style.backgroundColor = "var(--bg-card)";
                   e.currentTarget.style.color = "var(--text-primary)";
                 }
-                // Show action buttons
                 const actions = e.currentTarget.querySelector(
                   "[data-actions]"
                 ) as HTMLElement;
@@ -293,7 +282,6 @@ export default function FileTree({
                 if (actions && !isDeleting) actions.style.opacity = "0";
               }}
             >
-              {/* File icon badge */}
               <span
                 style={{
                   fontSize: "0.55rem",
@@ -311,7 +299,6 @@ export default function FileTree({
                 {icon.icon}
               </span>
 
-              {/* Filename or rename input */}
               {isRenaming ? (
                 <input
                   ref={renameInputRef}
@@ -351,7 +338,6 @@ export default function FileTree({
                 </span>
               )}
 
-              {/* Action buttons (visible on hover) */}
               {isOwner && !isRenaming && (
                 <div
                   data-actions
@@ -364,7 +350,6 @@ export default function FileTree({
                     flexShrink: 0,
                   }}
                 >
-                  {/* Rename */}
                   <button
                     onClick={(e) => startRename(file.filename, e)}
                     title="Rename"
@@ -400,7 +385,6 @@ export default function FileTree({
                     </svg>
                   </button>
 
-                  {/* Delete */}
                   {files.length > 1 && (
                     <button
                       onClick={(e) => handleDeleteClick(file.filename, e)}
@@ -449,7 +433,6 @@ export default function FileTree({
           );
         })}
 
-        {/* New file input */}
         {isCreating && (
           <div
             style={{
@@ -505,7 +488,6 @@ export default function FileTree({
         )}
       </div>
 
-      {/* Footer — file count */}
       <div
         style={{
           padding: "0.35rem 0.65rem",

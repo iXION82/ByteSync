@@ -42,7 +42,6 @@ export default function Navbar() {
         </Link>
 
         <div className="flex items-center gap-3">
-          {/* Theme Toggle */}
           <button
             className="flex items-center justify-center w-9 h-9 rounded-lg border border-[var(--border-color)] bg-[var(--bg-card)] text-[var(--text-secondary)] cursor-pointer transition-all duration-200 hover:border-[var(--accent)] hover:text-[var(--accent)] hover:shadow-[0_0_12px_var(--accent-glow)]"
             onClick={toggleTheme}
@@ -72,7 +71,6 @@ export default function Navbar() {
             <>
               <div className="relative cursor-pointer group" onClick={() => setMenuOpen(!menuOpen)}>
                 {user.imageUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={user.imageUrl}
                     alt={user.fullName || "Avatar"}

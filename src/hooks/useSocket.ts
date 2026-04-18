@@ -3,7 +3,6 @@ import { io, Socket } from "socket.io-client";
 
 const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:4000";
 
-// ─── Types ──────────────────────────────────────────────────────
 
 export interface SocketFile {
   filename: string;
@@ -34,7 +33,6 @@ interface UseSocketOptions {
   onCodeSaved?: (data: { timestamp: string }) => void;
   onCursorUpdate?: (data: { userId: string; line: number; column: number }) => void;
   onNewMessage?: (data: { _id: string; senderId: string; message: string; createdAt: string }) => void;
-  // ─── Multi-file events ─────────────────────────────────────
   onFileCreated?: (data: {
     filename: string;
     language: string;
@@ -63,7 +61,6 @@ interface UseSocketOptions {
   }) => void;
 }
 
-// ─── Hook ───────────────────────────────────────────────────────
 
 export function useSocket({
   roomId,
@@ -107,7 +104,6 @@ export function useSocket({
       socket.emit("join-room", { roomId, clerkId });
     });
 
-    // Existing events
     socket.on("room-state", (data) => callbacksRef.current.onRoomState?.(data));
     socket.on("code-update", (data) => callbacksRef.current.onCodeUpdate?.(data));
     socket.on("language-update", (data) => callbacksRef.current.onLanguageUpdate?.(data));
@@ -117,7 +113,6 @@ export function useSocket({
     socket.on("cursor-update", (data) => callbacksRef.current.onCursorUpdate?.(data));
     socket.on("new-message", (data) => callbacksRef.current.onNewMessage?.(data));
 
-    // Multi-file events
     socket.on("file-created", (data) => callbacksRef.current.onFileCreated?.(data));
     socket.on("file-deleted", (data) => callbacksRef.current.onFileDeleted?.(data));
     socket.on("file-renamed", (data) => callbacksRef.current.onFileRenamed?.(data));
@@ -132,8 +127,6 @@ export function useSocket({
       socketRef.current = null;
     };
   }, [roomId, clerkId]);
-
-  // ─── Existing emitters ────────────────────────────────────────
 
   const emitCodeChange = useCallback((code: string, codeLanguage?: string, filename?: string) => {
     socketRef.current?.emit("code-change", { code, codeLanguage, filename });
@@ -159,11 +152,9 @@ export function useSocket({
 
     if (state.timer) return; // throttle window active, pending will be sent
 
-    // Send immediately
     socketRef.current?.emit("cursor-move", { line, column });
     state.pending = null;
 
-    // Start throttle window
     state.timer = setTimeout(() => {
       if (state.pending) {
         socketRef.current?.emit("cursor-move", state.pending);
@@ -172,8 +163,6 @@ export function useSocket({
       state.timer = null;
     }, 50);
   }, []);
-
-  // ─── Multi-file emitters ──────────────────────────────────────
 
   const emitCreateFile = useCallback((filename: string, language: string, content?: string) => {
     socketRef.current?.emit("create-file", { filename, language, content });

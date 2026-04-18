@@ -5,7 +5,6 @@ import { findRoomById, removeUserFromRoom } from "../models/Room.js";
 
 const router = Router();
 
-// ─── Get user's rooms (created + joined) with details ───────────
 router.get("/:clerkId/rooms", async (req: Request<{ clerkId: string }>, res: Response): Promise<void> => {
   try {
     const user = await findUserByClerkId(req.params.clerkId);
@@ -14,7 +13,6 @@ router.get("/:clerkId/rooms", async (req: Request<{ clerkId: string }>, res: Res
       return;
     }
 
-    // Fetch details for created rooms
     const createdRooms = await Promise.all(
       (user.createdRoomIds || []).map(async (id) => {
         const room = await findRoomById(id.toString());
@@ -24,7 +22,6 @@ router.get("/:clerkId/rooms", async (req: Request<{ clerkId: string }>, res: Res
       })
     );
 
-    // Fetch details for joined rooms
     const joinedRooms = await Promise.all(
       (user.joinedRoomIds || []).map(async (id) => {
         const room = await findRoomById(id.toString());
@@ -45,7 +42,6 @@ router.get("/:clerkId/rooms", async (req: Request<{ clerkId: string }>, res: Res
   }
 });
 
-// ─── Set active room (auto-leave previous) ──────────────────────
 router.post("/set-active", async (req: Request, res: Response): Promise<void> => {
   try {
     const { clerkId, roomId } = req.body;
@@ -61,16 +57,13 @@ router.post("/set-active", async (req: Request, res: Response): Promise<void> =>
       return;
     }
 
-    // If user already has an active room that differs, leave it
     if (user.activeRoomId && user.activeRoomId.toString() !== roomId) {
-      // Remove user from old room's allowed list (only if member, not owner)
       const oldRoom = await findRoomById(user.activeRoomId.toString());
       if (oldRoom && !oldRoom.ownerId.equals(user._id)) {
         await removeUserFromRoom(user.activeRoomId.toString(), user._id);
       }
     }
 
-    // Set new active room
     await setActiveRoom(user._id.toString(), new ObjectId(roomId));
 
     res.json({ message: "Active room updated", activeRoomId: roomId });
@@ -80,7 +73,6 @@ router.post("/set-active", async (req: Request, res: Response): Promise<void> =>
   }
 });
 
-// ─── Clear active room ──────────────────────────────────────────
 router.post("/clear-active", async (req: Request, res: Response): Promise<void> => {
   try {
     const { clerkId } = req.body;

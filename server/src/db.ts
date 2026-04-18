@@ -5,7 +5,6 @@ const uri = process.env.MONGODB_URI!;
 let client: MongoClient;
 let clientPromise: Promise<MongoClient>;
 
-// Cache the client in development
 declare global {
   var _mongoServerClientPromise: Promise<MongoClient> | undefined;
 }

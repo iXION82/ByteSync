@@ -10,7 +10,6 @@ function TypewriterText({ text }: { text: string }) {
     setDisplayed("");
     isComplete.current = false;
     
-    // Fast path: if text is over 500 chars, skip animation to avoid long waits
     if (text.length > 500) {
       setDisplayed(text);
       isComplete.current = true;

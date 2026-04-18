@@ -8,11 +8,9 @@ interface CodeEditorProps {
   language: string;
   initialValue?: string;
   onChange: (value: string) => void;
-  /** Called when the local cursor moves */
   onCursorChange?: (line: number, column: number) => void;
 }
 
-// Cursor colors for remote participants
 const CURSOR_COLORS = [
   "#818cf8", // indigo
   "#34d399", // emerald
@@ -40,16 +38,10 @@ const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
     const monacoRef = useRef<typeof Monaco | null>(null);
     const isInternalEdit = useRef(false);
 
-    // Track decoration IDs per remote user
-    const cursorDecorationsRef = useRef<Map<string, string[]>>(new Map());
-    // Track injected CSS style elements per user
-    const cursorStylesRef = useRef<Map<string, HTMLStyleElement>>(new Map());
-    // Throttle cursor updates per user (avoid jittery rapid-fire re-renders)
-    const cursorThrottleRef = useRef<Map<string, { timer: ReturnType<typeof setTimeout> | null; pending: { line: number; column: number } | null }>>(new Map());
+      const cursorDecorationsRef = useRef<Map<string, string[]>>(new Map());
+      const cursorStylesRef = useRef<Map<string, HTMLStyleElement>>(new Map());
+      const cursorThrottleRef = useRef<Map<string, { timer: ReturnType<typeof setTimeout> | null; pending: { line: number; column: number } | null }>>(new Map());
 
-    /**
-     * Compute minimal diff and apply only changed range
-     */
     const applyMinimalEdit = useCallback(
       (newCode: string, source: string) => {
         const editor = editorRef.current;
@@ -94,9 +86,6 @@ const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
       []
     );
 
-    /**
-     * Inject CSS for a cursor color (once per user)
-     */
     const ensureCursorCSS = useCallback((userId: string, color: string) => {
       if (cursorStylesRef.current.has(userId)) return;
 
@@ -157,12 +146,6 @@ const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
       cursorStylesRef.current.set(userId, style);
     }, []);
 
-    /**
-     * Update or create a remote cursor decoration
-     */
-    /**
-     * Internal: apply the decoration for a remote cursor at a given position
-     */
     const applyRemoteCursor = useCallback(
       (userId: string, username: string, line: number, column: number, colorIndex: number) => {
         const editor = editorRef.current;
@@ -171,10 +154,8 @@ const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
         const color = CURSOR_COLORS[colorIndex % CURSOR_COLORS.length];
         const safeId = userId.replace(/[^a-zA-Z0-9]/g, "_");
 
-        // Ensure CSS exists for this cursor color
         ensureCursorCSS(userId, color);
 
-        // Build decorations
         const newDecorations: Monaco.editor.IModelDeltaDecoration[] = [
           {
             range: {
@@ -205,12 +186,10 @@ const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
           },
         ];
 
-        // Replace previous decorations
         const oldIds = cursorDecorationsRef.current.get(userId) || [];
         const newIds = editor.deltaDecorations(oldIds, newDecorations);
         cursorDecorationsRef.current.set(userId, newIds);
 
-        // Set the username data attribute on the label element (for ::after content)
         requestAnimationFrame(() => {
           const els = document.querySelectorAll(`.remote-cursor-label-${safeId}`);
           els.forEach((el) => el.setAttribute("data-username", username));
@@ -219,10 +198,6 @@ const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
       [ensureCursorCSS]
     );
 
-    /**
-     * Throttled cursor update — coalesces rapid-fire cursor events into
-     * smooth ~60ms intervals per user, preventing jittery decoration flicker.
-     */
     const updateRemoteCursor = useCallback(
       (userId: string, username: string, line: number, column: number, colorIndex: number) => {
         let state = cursorThrottleRef.current.get(userId);
@@ -231,19 +206,14 @@ const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
           cursorThrottleRef.current.set(userId, state);
         }
 
-        // Store the latest position
         state.pending = { line, column };
 
-        // If a timer is already running, the pending update will be applied when it fires
         if (state.timer) return;
 
-        // Apply immediately (first event in the batch)
         applyRemoteCursor(userId, username, line, column, colorIndex);
         state.pending = null;
 
-        // Start throttle window
         state.timer = setTimeout(() => {
-          // Apply the most recent pending position if any arrived during the window
           if (state!.pending) {
             applyRemoteCursor(userId, username, state!.pending.line, state!.pending.column, colorIndex);
             state!.pending = null;
@@ -254,9 +224,6 @@ const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
       [applyRemoteCursor]
     );
 
-    /**
-     * Remove a remote cursor
-     */
     const removeRemoteCursor = useCallback((userId: string) => {
       const editor = editorRef.current;
       if (!editor) return;
@@ -265,7 +232,6 @@ const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
       editor.deltaDecorations(oldIds, []);
       cursorDecorationsRef.current.delete(userId);
 
-      // Remove injected CSS
       const style = cursorStylesRef.current.get(userId);
       if (style) {
         style.remove();
@@ -273,7 +239,6 @@ const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
       }
     }, []);
 
-    // Expose imperative handle
     useImperativeHandle(ref, () => ({
       setRemoteCode: (code: string) => applyMinimalEdit(code, "remote-sync"),
       setCode: (code: string) => applyMinimalEdit(code, "programmatic"),
@@ -300,7 +265,6 @@ const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
     const handleEditorMount: OnMount = (editor, monaco) => {
       editorRef.current = editor;
 
-      // Define custom dark theme
       monaco.editor.defineTheme("bytesync-dark", {
         base: "vs-dark",
         inherit: true,
@@ -354,7 +318,6 @@ const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
         },
       });
 
-      // Define custom light theme
       monaco.editor.defineTheme("bytesync-light", {
         base: "vs",
         inherit: true,
@@ -390,9 +353,7 @@ const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
 
       editor.focus();
 
-      // Listen for cursor position changes
       editor.onDidChangeCursorPosition((e) => {
-        // Only emit if it's a real user action, not an internal programmatic edit
         if (!isInternalEdit.current && onCursorChange) {
           onCursorChange(e.position.lineNumber, e.position.column);
         }

@@ -66,8 +66,6 @@ export default function SignUpForm() {
         setLoading(false);
         return;
       }
-      console.log("Sign-up status:", signUp.status, "userId:", signUp.createdUserId);
-      // Save Data in MongoDB
       try {
         const res = await fetch("/api/users", {
           method: "POST",

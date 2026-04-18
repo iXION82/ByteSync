@@ -12,22 +12,18 @@ import { registerSocketHandlers } from "./socket/handlers.js";
 const PORT = parseInt(process.env.PORT || "4000", 10);
 const CORS_ORIGIN = process.env.CORS_ORIGIN || "http://localhost:3000";
 
-// ─── Express App ────────────────────────────────────────────────
 const app = express();
 app.use(cors({ origin: CORS_ORIGIN, credentials: true }));
 app.use(express.json());
 
-// ─── Health Check ───────────────────────────────────────────────
 app.get("/health", (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
-// ─── REST Routes ────────────────────────────────────────────────
 app.use("/api/rooms", roomRoutes);
 app.use("/api/chats", chatRoutes);
 app.use("/api/users", userRoutes);
 
-// ─── HTTP + Socket.IO Server ────────────────────────────────────
 const httpServer = createServer(app);
 
 const io = new Server(httpServer, {
@@ -38,13 +34,10 @@ const io = new Server(httpServer, {
   },
 });
 
-// Register socket event handlers
 registerSocketHandlers(io);
 
-// ─── Start Server ───────────────────────────────────────────────
 async function start() {
   try {
-    // Verify MongoDB connection
     const client = await clientPromise;
     await client.db("ByteSync").command({ ping: 1 });
     console.log("✅ MongoDB connected");

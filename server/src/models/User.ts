@@ -1,7 +1,6 @@
 import { ObjectId, type WithId } from "mongodb";
 import { getDatabase } from "../db.js";
 
-// ─── User Document Interface (read-only on server side) ─────────
 export interface UserDocument {
   clerkId: string;
   username: string;
@@ -10,18 +9,15 @@ export interface UserDocument {
   imageUrl?: string;
   joinedRoomIds: ObjectId[];
   createdRoomIds: ObjectId[];
-  activeRoomId: ObjectId | null;  // currently active room (one at a time)
+  activeRoomId: ObjectId | null;
   createdAt: Date;
   updatedAt: Date;
 }
 
-// ─── Collection Helper ──────────────────────────────────────────
 async function getUsersCollection() {
   const db = await getDatabase();
   return db.collection<UserDocument>("users");
 }
-
-// ─── Read-only Helpers ──────────────────────────────────────────
 
 export async function findUserById(
   id: string
@@ -44,9 +40,6 @@ export async function findUserByUsername(
   return collection.findOne({ username });
 }
 
-/**
- * Add a joined room ID to a user (max 3)
- */
 export async function addJoinedRoom(
   userId: string,
   roomId: ObjectId
@@ -54,7 +47,6 @@ export async function addJoinedRoom(
   const collection = await getUsersCollection();
   const oid = new ObjectId(userId);
 
-  // Ensure joinedRoomIds array exists
   await collection.updateOne(
     { _id: oid, joinedRoomIds: { $exists: false } },
     { $set: { joinedRoomIds: [] } }
@@ -74,9 +66,6 @@ export async function addJoinedRoom(
   return result;
 }
 
-/**
- * Remove a joined room ID from a user
- */
 export async function removeJoinedRoom(
   userId: string,
   roomId: ObjectId
@@ -93,9 +82,6 @@ export async function removeJoinedRoom(
   return result;
 }
 
-/**
- * Add a created room ID to a user (max 3)
- */
 export async function addCreatedRoom(
   userId: string,
   roomId: ObjectId
@@ -103,7 +89,6 @@ export async function addCreatedRoom(
   const collection = await getUsersCollection();
   const oid = new ObjectId(userId);
 
-  // Ensure createdRoomIds array exists
   await collection.updateOne(
     { _id: oid, createdRoomIds: { $exists: false } },
     { $set: { createdRoomIds: [] } }
@@ -123,9 +108,6 @@ export async function addCreatedRoom(
   return result;
 }
 
-/**
- * Remove a created room ID from a user
- */
 export async function removeCreatedRoom(
   userId: string,
   roomId: ObjectId
@@ -142,9 +124,6 @@ export async function removeCreatedRoom(
   return result;
 }
 
-/**
- * Set the user's active room (one at a time)
- */
 export async function setActiveRoom(
   userId: string,
   roomId: ObjectId
@@ -160,9 +139,6 @@ export async function setActiveRoom(
   return result;
 }
 
-/**
- * Clear the user's active room
- */
 export async function clearActiveRoom(
   userId: string
 ): Promise<WithId<UserDocument> | null> {

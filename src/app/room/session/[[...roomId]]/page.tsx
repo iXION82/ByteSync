@@ -11,7 +11,6 @@ import { LANGUAGES, DEFAULT_LANGUAGE_ID, getLanguageById, inferLanguageFromFilen
 import { useSocket, type SocketUser, type SocketFile } from "@/hooks/useSocket";
 import type { CodeEditorHandle } from "@/components/editor/CodeEditor";
 
-// Dynamic import Monaco to avoid SSR issues
 const CodeEditor = dynamic(() => import("@/components/editor/CodeEditor"), {
   ssr: false,
   loading: () => (
@@ -25,7 +24,6 @@ const CodeEditor = dynamic(() => import("@/components/editor/CodeEditor"), {
 const EXECUTE_API = "/api/execute";
 const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:4000";
 
-// Participant color palette
 const PARTICIPANT_COLORS = [
   { bg: "rgba(99, 102, 241, 0.2)", border: "#818cf8", text: "#818cf8" },
   { bg: "rgba(16, 185, 129, 0.2)", border: "#34d399", text: "#34d399" },
@@ -68,11 +66,9 @@ export default function SessionPage() {
     ? (Array.isArray(params.roomId) ? params.roomId.join("/") : params.roomId)
     : "";
 
-  // Room details (fetched from REST API)
   const [roomDetails, setRoomDetails] = useState<RoomDetails | null>(null);
   const [roomLoading, setRoomLoading] = useState(true);
 
-  // Editor state
   const [languageId, setLanguageId] = useState(DEFAULT_LANGUAGE_ID);
   const [code, setCode] = useState(
     getLanguageById(DEFAULT_LANGUAGE_ID)?.starterCode || ""
@@ -85,15 +81,12 @@ export default function SessionPage() {
   const [lastSaved, setLastSaved] = useState<string | null>(null);
   const [justSaved, setJustSaved] = useState(false);
 
-  // Multi-file state
   const [files, setFiles] = useState<FileItem[]>([]);
   const [activeFile, setActiveFile] = useState<string>("");
   const [fileTreeOpen, setFileTreeOpen] = useState(true);
 
-  // Live participants from socket
   const [liveUsers, setLiveUsers] = useState<SocketUser[]>([]);
 
-  // Chat state
   interface ChatMessage {
     _id: string;
     senderId: string;
@@ -105,23 +98,19 @@ export default function SessionPage() {
   const chatEndRef = useRef<HTMLDivElement | null>(null);
   const chatContainerRef = useRef<HTMLDivElement | null>(null);
 
-  // Derived DB user ID for the current Clerk user
   const myDbUserId = useMemo(() => {
     if (!user || !roomDetails) return null;
     if (roomDetails.owner?.clerkId === user.id) return roomDetails.owner.userId;
     return roomDetails.participants.find((p) => p.clerkId === user.id)?.userId || null;
   }, [user, roomDetails]);
 
-  // Ref to the CodeEditor imperative handle (for remote code pushes)
   const editorRef = useRef<CodeEditorHandle | null>(null);
 
-  // Flag to suppress emitting code-change when receiving remote updates
   const isRemoteUpdate = useRef(false);
 
   const currentLang = getLanguageById(languageId)!;
   const isOwner = Boolean(user?.id && roomDetails?.owner?.clerkId === user.id);
 
-  // ─── Fetch room details + chat history on mount ────────────
   useEffect(() => {
     if (!roomIdStr) return;
 
@@ -133,7 +122,6 @@ export default function SessionPage() {
           const data: RoomDetails = await res.json();
           setRoomDetails(data);
 
-          // Set initial code and language from room data
           if (data.code) setCode(data.code);
           if (data.codeLanguage) {
             const lang = LANGUAGES.find(l => l.monacoLang === data.codeLanguage || l.id === data.codeLanguage);
@@ -163,7 +151,6 @@ export default function SessionPage() {
     fetchChatHistory();
   }, [roomIdStr]);
 
-  // ─── Socket integration ────────────────────────────────────
   const {
     emitCodeChange, emitLanguageChange, emitSave, emitMessage, emitCursorMove,
     emitCreateFile, emitDeleteFile, emitRenameFile, emitSwitchFile,
@@ -179,7 +166,6 @@ export default function SessionPage() {
         if (lang) setLanguageId(lang.id);
       }
       setLiveUsers(data.users);
-      // Load files from room state
       if (data.files && data.files.length > 0) {
         setFiles(data.files.map((f: SocketFile) => ({ filename: f.filename, content: f.content, language: f.language })));
         setActiveFile(data.activeFile || data.files[0].filename);
@@ -187,12 +173,10 @@ export default function SessionPage() {
       setTimeout(() => { isRemoteUpdate.current = false; }, 0);
     },
     onCodeUpdate: (data) => {
-      // Only apply if it's for the file we're currently viewing
       if (data.filename && data.filename !== activeFile) return;
       isRemoteUpdate.current = true;
       setCode(data.code);
       editorRef.current?.setRemoteCode(data.code);
-      // Also update the files array in memory
       setFiles((prev) => prev.map((f) => f.filename === (data.filename || activeFile) ? { ...f, content: data.code } : f));
       setTimeout(() => { isRemoteUpdate.current = false; }, 0);
     },
@@ -229,13 +213,11 @@ export default function SessionPage() {
     onNewMessage: (data) => {
       setChatMessages((prev) => [...prev, data]);
     },
-    // ─── Multi-file socket callbacks ──────────────────────────
     onFileCreated: (data) => {
       setFiles(data.files.map((f: SocketFile) => ({ filename: f.filename, content: f.content, language: f.language })));
     },
     onFileDeleted: (data) => {
       setFiles(data.files.map((f: SocketFile) => ({ filename: f.filename, content: f.content, language: f.language })));
-      // If the deleted file was the one we had open, switch to the new active
       if (activeFile === data.filename) {
         setActiveFile(data.activeFile);
         const switchedFile = data.files.find((f: SocketFile) => f.filename === data.activeFile);
@@ -251,24 +233,18 @@ export default function SessionPage() {
     },
     onFileRenamed: (data) => {
       setFiles(data.files.map((f: SocketFile) => ({ filename: f.filename, content: f.content, language: f.language })));
-      // If we had the old name active, switch to the new name
       if (activeFile === data.oldFilename) {
         setActiveFile(data.newFilename);
       }
     },
-    onFileSwitched: (data) => {
-      // Another user switched the room's active file — update our view too
-      // Only auto-switch if it wasn't us who triggered it
-      // (our own switch is handled locally already)
+    onFileSwitched: () => {
     },
   });
 
-  // ─── Auto-scroll chat to bottom on new messages ────────────
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatMessages]);
 
-  // ─── Send chat message ─────────────────────────────────────
   const handleSendMessage = useCallback(() => {
     const trimmed = chatInput.trim();
     if (!trimmed) return;
@@ -283,12 +259,9 @@ export default function SessionPage() {
     }
   }, [handleSendMessage]);
 
-  // ─── Resolve sender name from userId ───────────────────────
   const getSenderName = useCallback((senderId: string) => {
-    // Check live users first
     const liveUser = liveUsers.find(u => u.userId === senderId);
     if (liveUser) return liveUser.username;
-    // Fallback to room details
     const participant = roomDetails?.participants.find(p => p.userId === senderId);
     if (participant) return participant.name;
     if (roomDetails?.owner?.userId === senderId) return roomDetails.owner.name;
@@ -300,17 +273,13 @@ export default function SessionPage() {
     return PARTICIPANT_COLORS[Math.max(0, idx) % PARTICIPANT_COLORS.length];
   }, [liveUsers]);
 
-  // ─── Code change handler (local edits, debounced emit) ──────
   const debounceTimer = useRef<NodeJS.Timeout | null>(null);
 
   const handleCodeChange = useCallback((newCode: string) => {
     setCode(newCode);
-    // Keep the in-memory files array in sync
     setFiles((prev) => prev.map((f) => f.filename === activeFile ? { ...f, content: newCode } : f));
 
-    // Only emit to socket if this is a local edit (not a remote update)
     if (!isRemoteUpdate.current) {
-      // Debounce: wait 150ms after last keystroke before sending
       if (debounceTimer.current) clearTimeout(debounceTimer.current);
       debounceTimer.current = setTimeout(() => {
         emitCodeChange(newCode, currentLang.monacoLang, activeFile);
@@ -318,10 +287,8 @@ export default function SessionPage() {
     }
   }, [emitCodeChange, currentLang, activeFile]);
 
-  // ─── Multi-file action handlers ────────────────────────────
   const handleSwitchFile = useCallback((filename: string) => {
     if (filename === activeFile) return;
-    // Save current file content in memory before switching
     const targetFile = files.find((f) => f.filename === filename);
     if (!targetFile) return;
 
@@ -330,7 +297,6 @@ export default function SessionPage() {
     setCode(targetFile.content);
     editorRef.current?.setRemoteCode(targetFile.content);
 
-    // Update language to match the file
     const lang = LANGUAGES.find(l => l.monacoLang === targetFile.language || l.id === targetFile.language);
     if (lang) setLanguageId(lang.id);
 
@@ -350,7 +316,6 @@ export default function SessionPage() {
     emitRenameFile(oldFilename, newFilename);
   }, [emitRenameFile]);
 
-  // ─── Language change handler ───────────────────────────────
   const handleLanguageChange = useCallback((newLangId: string) => {
     if (!isOwner) {
       alert("Only the room owner can change the language.");
@@ -366,7 +331,6 @@ export default function SessionPage() {
       setCode(lang.starterCode);
       editorRef.current?.setCode(lang.starterCode);
       emitLanguageChange(lang.monacoLang, lang.starterCode);
-      // Update active file in files array
       setFiles((prev) => prev.map((f) => f.filename === activeFile ? { ...f, content: lang.starterCode, language: lang.monacoLang } : f));
     }
     setOutput("");
@@ -374,7 +338,6 @@ export default function SessionPage() {
     setExecutionTime(null);
   }, [emitLanguageChange, isOwner, activeFile]);
 
-  // ─── Run code ──────────────────────────────────────────────
   const handleRunCode = useCallback(async () => {
     setIsRunning(true);
     setOutput("");
@@ -445,7 +408,6 @@ export default function SessionPage() {
 
   const handleLeaveRoom = async () => {
     if (!user || !roomIdStr) return;
-    // Save before leaving
     emitSave();
     try {
       await fetch(`${SERVER_URL}/api/rooms/leave`, {
@@ -477,11 +439,9 @@ export default function SessionPage() {
 
   return (
     <div className="flex flex-col h-screen pt-16 bg-background overflow-hidden w-full">
-      {/* Toolbar Area */}
       <div className="flex items-center justify-between px-3 py-2 sm:px-4 sm:py-0 h-auto sm:h-13 min-h-13 bg-(--bg-secondary) border-b border-(--border-color) gap-2 sm:gap-4 z-10 flex-wrap sm:flex-nowrap">
         <div className="flex items-center gap-5">
           <div className="flex items-center gap-[0.4rem] font-mono text-base sm:text-[1.2rem] text-(--accent) whitespace-nowrap">
-            {/* File tree toggle */}
             <button
               onClick={() => setFileTreeOpen((v) => !v)}
               className="hidden md:flex items-center justify-center w-7 h-7 rounded-md border border-(--border-color) text-(--text-muted) hover:text-(--accent) hover:border-(--accent) bg-transparent cursor-pointer transition-all duration-150 active:scale-[0.95] mr-1"
@@ -498,7 +458,6 @@ export default function SessionPage() {
               <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
             </svg>
             <span>SESSION_ROOM</span>
-            {/* Live indicator */}
             <span
               className="w-2 h-2 rounded-full ml-1"
               style={{ background: "#22c55e", animation: "badge-pulse 2s infinite" }}
@@ -506,7 +465,6 @@ export default function SessionPage() {
             />
           </div>
 
-          {/* Language Selector */}
           <div className="flex items-center gap-[0.4rem]">
             <label className="font-sans text-[0.7rem] font-semibold text-(--text-muted) tracking-[0.06em] uppercase" htmlFor="lang-select">LANG:</label>
             <select
@@ -527,7 +485,6 @@ export default function SessionPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Save button */}
           <button
             className={`flex items-center gap-[0.35rem] font-mono text-[1.05rem] font-normal py-[0.3rem] px-[0.9rem] rounded-md cursor-pointer transition-all duration-200 border whitespace-nowrap tracking-[0.02em] active:scale-[0.97] ${
               justSaved 
@@ -561,7 +518,6 @@ export default function SessionPage() {
             </svg>
             CLEAR
           </button>
-          {/* Replay button */}
           <button
             className="flex items-center gap-[0.35rem] font-mono text-[1.05rem] font-normal py-[0.3rem] px-[0.9rem] rounded-md cursor-pointer transition-all duration-200 border border-(--border-color) whitespace-nowrap tracking-[0.02em] bg-transparent text-(--text-muted) active:scale-[0.97] hover:border-(--accent) hover:text-(--accent) hover:bg-(--bg-card)"
             onClick={() => window.open(`/room/replay/${roomIdStr}`, '_blank')}
@@ -596,9 +552,7 @@ export default function SessionPage() {
         </div>
       </div>
 
-      {/* Main Content Area: FileTree + Editor + Right Panel */}
       <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
-        {/* File Tree Sidebar */}
         {fileTreeOpen && (
           <div className="hidden md:flex w-[11rem] min-w-[11rem] max-w-[14rem] h-full flex-shrink-0 border-r border-(--border-color)">
             <FileTree
@@ -613,7 +567,6 @@ export default function SessionPage() {
           </div>
         )}
 
-        {/* Code Editor */}
         <div className="h-[55%] md:h-auto md:flex-1 min-w-0 overflow-hidden border-b md:border-b-0 border-(--border-color)">
           <CodeEditor
             ref={editorRef}
@@ -710,10 +663,8 @@ export default function SessionPage() {
         </div>
       </div>
 
-      {/* Bottom Bar — Room Info & Participants */}
       <div className="h-16 sm:h-20 min-h-16 sm:min-h-20 bg-(--bg-secondary) border-t border-(--border-color) px-4 py-2 flex items-center justify-between z-10 overflow-x-auto no-scrollbar">
         <div className="flex items-center gap-4 h-full min-w-max">
-          {/* Room Code */}
           <div className="flex flex-col">
             <span className="text-xs text-(--text-muted) font-mono uppercase tracking-wider">ROOM CODE</span>
             <div className="flex items-center gap-2 mt-1">
@@ -738,7 +689,6 @@ export default function SessionPage() {
 
           <div className="w-px h-8 bg-(--border-color) mx-2 hidden sm:block" />
 
-          {/* Live Participants */}
           <div className="flex flex-col h-full justify-center">
             <span className="text-[0.65rem] text-(--text-muted) font-mono uppercase tracking-wider mb-1">
               LIVE ({liveUsers.length})
@@ -769,7 +719,6 @@ export default function SessionPage() {
                         >
                           {getInitials(u.username)}
                         </div>
-                        {/* Online dot */}
                         <span
                           className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-(--bg-secondary)"
                           style={{ background: "#22c55e" }}
@@ -791,7 +740,6 @@ export default function SessionPage() {
             </div>
           </div>
 
-          {/* Last saved */}
           {lastSaved && (
             <>
               <div className="w-px h-8 bg-(--border-color) mx-2 hidden sm:block" />
@@ -803,7 +751,6 @@ export default function SessionPage() {
           )}
         </div>
 
-        {/* Leave Room */}
         <div className="flex items-center ml-4">
           <button
             onClick={handleLeaveRoom}

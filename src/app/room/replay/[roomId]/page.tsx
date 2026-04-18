@@ -18,7 +18,6 @@ const CodeEditor = dynamic(() => import("@/components/editor/CodeEditor"), {
 
 const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:4000";
 
-// ─── Types ──────────────────────────────────────────────────────
 
 interface SnapshotFile {
   filename: string;
@@ -46,9 +45,7 @@ const TRIGGER_META: Record<string, { label: string; badge: string; color: string
   "language-change":{ label: "Language Changed",  badge: "LANG", color: "#8b5cf6" },
 };
 
-// ─── Animation Variants ─────────────────────────────────────────
 
-// 1. Staggered snapshot entrance — each item slides in from left
 const listContainerVariants = {
   hidden: {},
   show: {
@@ -73,14 +70,12 @@ const listItemVariants = {
   },
 };
 
-// 3. Editor crossfade
 const editorFadeVariants = {
   initial: { opacity: 0 },
   animate: { opacity: 1, transition: { duration: 0.25, ease: "easeOut" as const } },
   exit: { opacity: 0, transition: { duration: 0.15, ease: "easeIn" as const } },
 };
 
-// ─── Page ───────────────────────────────────────────────────────
 
 export default function ReplayPage() {
   const params = useParams();
@@ -94,13 +89,11 @@ export default function ReplayPage() {
   const [error, setError] = useState<string | null>(null);
   const [viewingFile, setViewingFile] = useState("");
 
-  // Track whether the editor is transitioning (crossfade)
   const [editorKey, setEditorKey] = useState(0);
 
   const editorRef = useRef<{ setRemoteCode: (code: string) => void } | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
-  // ─── Load snapshots ───────────────────────────────────────────
   useEffect(() => {
     if (!roomId) return;
     (async () => {
@@ -123,16 +116,13 @@ export default function ReplayPage() {
     })();
   }, [roomId]);
 
-  // ─── Update editor + trigger crossfade when selection changes ──
   const selected = snapshots[selectedIndex];
 
   useEffect(() => {
     if (!selected) return;
     const file = selected.files.find(f => f.filename === viewingFile) || selected.files[0];
     if (file) {
-      // Trigger the crossfade by bumping the key
       setEditorKey(k => k + 1);
-      // Small delay to let fade-out happen, then push new code
       setTimeout(() => {
         editorRef.current?.setRemoteCode(file.content);
         if (file.filename !== viewingFile) setViewingFile(file.filename);
@@ -140,13 +130,11 @@ export default function ReplayPage() {
     }
   }, [selectedIndex, selected]);
 
-  // ─── Scroll the active item into view ─────────────────────────
   useEffect(() => {
     const activeEl = listRef.current?.querySelector(`[data-idx="${selectedIndex}"]`);
     activeEl?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }, [selectedIndex]);
 
-  // ─── Keyboard navigation ──────────────────────────────────────
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === "ArrowUp" || e.key === "k") {
@@ -162,7 +150,6 @@ export default function ReplayPage() {
     return () => window.removeEventListener("keydown", handler);
   }, [snapshots.length]);
 
-  // ─── Helpers ──────────────────────────────────────────────────
   const formatTime = (ts: string) => new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
   const formatDate = (ts: string) => {
     const d = new Date(ts);
@@ -173,7 +160,6 @@ export default function ReplayPage() {
 
   return (
     <div className="flex flex-col h-screen bg-background overflow-hidden pt-16" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>
-      {/* ─── Header ───────────────────────────────────────────── */}
       <motion.div
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
@@ -211,7 +197,6 @@ export default function ReplayPage() {
         </div>
       </motion.div>
 
-      {/* ─── Main ─────────────────────────────────────────────── */}
       {loading ? (
         <div className="flex-1 flex items-center justify-center">
           <motion.div
@@ -242,12 +227,10 @@ export default function ReplayPage() {
         </div>
       ) : (
         <div className="flex flex-1 overflow-hidden">
-          {/* ─── Snapshot List (Left Sidebar) ─────────────────── */}
           <div
             className="w-72 min-w-72 border-r border-(--border-color) flex flex-col overflow-hidden"
             style={{ background: "var(--bg-secondary)" }}
           >
-            {/* Prev / Next nav */}
             <div className="flex items-center justify-between px-3 py-2 border-b border-(--border-color)">
               <button
                 onClick={() => setSelectedIndex(i => Math.max(0, i - 1))}
@@ -268,7 +251,6 @@ export default function ReplayPage() {
               </button>
             </div>
 
-            {/* ── Animation 1: Staggered snapshot list ─────────── */}
             <motion.div
               ref={listRef}
               className="flex-1 overflow-y-auto py-1"
@@ -296,12 +278,10 @@ export default function ReplayPage() {
                       padding: "0.5rem 0.75rem",
                       background: isActive ? "rgba(0,255,65,0.06)" : "transparent",
                       borderLeft: isActive ? "3px solid var(--accent)" : "3px solid transparent",
-                      // 2. Active glow pulse — CSS animation applied via boxShadow
                       boxShadow: isActive ? "inset 0 0 20px rgba(0,255,65,0.05)" : "none",
                       transition: "border-left 0.2s ease, box-shadow 0.3s ease",
                     }}
                     animate={isActive ? {
-                      // 2. Subtle breathing glow for active item
                       boxShadow: [
                         "inset 0 0 12px rgba(0,255,65,0.04)",
                         "inset 0 0 24px rgba(0,255,65,0.08)",
@@ -312,7 +292,6 @@ export default function ReplayPage() {
                       boxShadow: { duration: 2, repeat: Infinity, ease: "easeInOut" },
                     } : { type: "spring", stiffness: 400, damping: 28 }}
                   >
-                    {/* Top row: icon + trigger label + time */}
                     <div className="flex items-center justify-between w-full">
                       <div className="flex items-center gap-1.5">
                         <span
@@ -336,7 +315,6 @@ export default function ReplayPage() {
                       </span>
                     </div>
 
-                    {/* Details row */}
                     <div className="flex items-center gap-2 text-[0.55rem] text-(--text-muted)">
                       {snap.username && <span>by {snap.username}</span>}
                       <span>{snap.files.length} file{snap.files.length !== 1 ? "s" : ""}</span>
@@ -348,9 +326,7 @@ export default function ReplayPage() {
             </motion.div>
           </div>
 
-          {/* ─── Right Side: File Tabs + Editor ───────────────── */}
           <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-            {/* File tabs */}
             {selected && selected.files.length > 1 && (
               <div
                 className="flex items-center gap-0 border-b border-(--border-color) overflow-x-auto"
@@ -384,7 +360,6 @@ export default function ReplayPage() {
               </div>
             )}
 
-            {/* Single file indicator */}
             {selected && selected.files.length === 1 && (
               <div
                 className="flex items-center px-4 border-b border-(--border-color)"
@@ -396,7 +371,6 @@ export default function ReplayPage() {
               </div>
             )}
 
-            {/* ── Animation 3: Editor crossfade ───────────────── */}
             <div className="flex-1 min-w-0 overflow-hidden relative">
               <AnimatePresence mode="wait">
                 <motion.div

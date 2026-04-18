@@ -7,14 +7,7 @@ import {
   deleteUserByClerkId,
 } from "@/models/User";
 
-// Clerk sends webhook events when users are created, updated, or deleted.
-// This endpoint syncs that data to our MongoDB database.
-//
-// Setup:
-// 1. Go to Clerk Dashboard → Webhooks
-// 2. Add endpoint: https://your-domain.com/api/webhooks/clerk
-// 3. Subscribe to: user.created, user.updated, user.deleted
-// 4. Copy the signing secret to CLERK_WEBHOOK_SECRET in .env.local
+
 
 export async function POST(req: Request) {
   const WEBHOOK_SECRET = process.env.CLERK_WEBHOOK_SECRET;
@@ -27,7 +20,6 @@ export async function POST(req: Request) {
     );
   }
 
-  // ── Verify the webhook signature with Svix ──────────────────
   const headerPayload = await headers();
   const svixId = headerPayload.get("svix-id");
   const svixTimestamp = headerPayload.get("svix-timestamp");
@@ -59,7 +51,6 @@ export async function POST(req: Request) {
     );
   }
 
-  // ── Handle the verified event ───────────────────────────────
   const { type: eventType, data } = event;
 
   try {

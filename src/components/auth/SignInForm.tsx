@@ -16,7 +16,6 @@ export default function SignInForm() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // Verification state — supports TOTP (real MFA) and email_code (device trust)
   const [verificationMode, setVerificationMode] = useState<VerificationMode>("none");
   const [verificationCode, setVerificationCode] = useState("");
 
@@ -45,33 +44,24 @@ export default function SignInForm() {
         signIn.status === "needs_second_factor" ||
         (signIn.status as string) === "needs_client_trust"
       ) {
-        // Determine which second-factor strategy is available
         const factors = signIn.supportedSecondFactors ?? [];
         const strategies = factors.map((f: { strategy: string }) => f.strategy);
 
         if (strategies.includes("totp")) {
-          // Real MFA — user has TOTP authenticator enrolled
           setVerificationMode("totp");
         } else if (strategies.includes("email_code")) {
-          // Device trust — Clerk sends a verification code to email
           try {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             await (signIn as any).prepareSecondFactor({ strategy: "email_code" });
           } catch {
-            // prepareSecondFactor may not be needed if Clerk auto-sends
           }
           setVerificationMode("email_code");
         } else if (strategies.includes("phone_code")) {
-          // Device trust via phone
           try {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             await (signIn as any).prepareSecondFactor({ strategy: "phone_code" });
           } catch {
-            // prepareSecondFactor may not be needed if Clerk auto-sends
           }
           setVerificationMode("phone_code");
         } else {
-          // No recognized strategy — log and show error
           console.log("Unsupported second factor strategies:", strategies);
           setError("Additional verification is required but not supported. Please contact support.");
         }
@@ -119,7 +109,6 @@ export default function SignInForm() {
     }
   };
 
-  // ─── Verification titles/descriptions per mode ──────────────
   const verificationConfig = {
     totp: {
       title: "> 2FA_VERIFY_",
@@ -154,7 +143,6 @@ export default function SignInForm() {
     },
   };
 
-  // ─── Verification Screen (TOTP / Email Code / Phone Code) ────
   if (verificationMode !== "none") {
     const config = verificationConfig[verificationMode];
     return (
@@ -231,13 +219,10 @@ export default function SignInForm() {
     );
   }
 
-  // ─── Normal Sign-In Screen ───────────────────────────────────
   return (
     <div className="relative w-full max-w-[440px] animate-[fadeInUp_0.5s_ease] overflow-hidden">
-      {/* CRT scanline overlay for auth card */}
       <div className="absolute top-0 left-0 w-full h-full pointer-events-none z-[1] [background:repeating-linear-gradient(0deg,var(--scanline-color)_0px,var(--scanline-color)_1px,transparent_1px,transparent_3px)] opacity-50 rounded-[var(--radius-lg)]" aria-hidden="true" />
 
-      {/* Decorative glow orbs */}
       <div className="absolute rounded-full blur-[80px] pointer-events-none animate-[float_8s_infinite_ease-in-out] w-[200px] h-[200px] bg-[var(--accent-glow-strong)] -top-[40px] -left-[60px]" />
       <div className="absolute rounded-full blur-[80px] pointer-events-none animate-[float_8s_infinite_ease-in-out] w-[160px] h-[160px] bg-[var(--accent-glow)] -bottom-[30px] -right-[50px] [animation-delay:-4s]" />
 

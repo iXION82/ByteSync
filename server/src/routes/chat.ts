@@ -3,7 +3,6 @@ import { getMessagesByRoom } from "../models/Chat.js";
 
 const router = Router();
 
-// ─── Get chat history for a room ────────────────────────────────
 router.get("/:roomId", async (req: Request<{ roomId: string }>, res: Response): Promise<void> => {
   try {
     const roomId = req.params.roomId;
